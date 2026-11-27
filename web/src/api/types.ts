@@ -354,3 +354,70 @@ export interface CommitmentFilters {
   risk?: string;
 }
 export type ResolveOutcome = "done" | "retry" | "cancel";
+
+// Promise archaeology (POST /api/promises)
+export type PromiseStatus = "kept" | "overdue" | "quiet" | "dropped" | "follow_up" | "open";
+
+export interface FoundPromise {
+  who: string;
+  quote: string;
+  said_at: string;
+  url: string;
+  number: number;
+  thread_title: string;
+  is_pr: boolean;
+  what: string;
+  due: string | null;
+  deferred: boolean;
+  status: PromiseStatus;
+  resolved_at: string | null;
+  days_to_keep: number | null;
+  age_days: number;
+}
+
+export interface PromiseStats extends Record<PromiseStatus, number> {
+  promises: number;
+  judged: number;
+  kept_rate: number | null;
+  median_days_to_keep: number | null;
+  top_promisers: { who: string; made: number; kept: number }[];
+  oldest_unkept: FoundPromise | null;
+  fastest_kept: FoundPromise | null;
+}
+
+export interface PromiseReport {
+  repo: string;
+  days: number;
+  scanned_comments: number;
+  checked_threads: number;
+  promises: FoundPromise[];
+  used_model: boolean;
+  stats: PromiseStats;
+  not_checked: string[];
+  badge_svg: string;
+  card_svg: string;
+  markdown: string;
+}
+
+// Team Wrapped (GET /api/teams/{slug}/wrapped)
+export interface WrappedFacts {
+  team: string;
+  days: number;
+  from: string;
+  to: string;
+  made: number;
+  kept: number;
+  on_time: number;
+  on_time_rate: number | null;
+  dropped: number;
+  overdue_now: number;
+  longest_on_time_streak: number;
+  helped_other_teams: number;
+  fastest: { key: string; title: string; hours: number } | null;
+  best_partner: { team: string; count: number } | null;
+  top_closers: { who: string; kept: number }[];
+  busiest_day: string | null;
+  oldest_open: { key: string; title: string; days: number } | null;
+  persona: { name: string; line: string };
+  headline: string;
+}

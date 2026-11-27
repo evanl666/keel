@@ -23,6 +23,7 @@ import type {
   TeamSummary,
 } from "../types";
 import * as D from "./data";
+import * as S from "./share";
 
 const OPEN = new Set(["proposed", "accepted", "in_progress", "blocked"]);
 const SIGNED_OUT_KEY = "keel-mock-signed-out";
@@ -322,7 +323,7 @@ function body<T>(b: unknown): T {
   return (b ?? {}) as T;
 }
 
-type Handler = (m: RegExpMatchArray, b: unknown, url: URL) => unknown;
+type Handler = (m: RegExpMatchArray, b: unknown, url: URL) => unknown | Promise<unknown>;
 const routes: [Method, RegExp, Handler][] = [
   ["GET", /^\/api\/me$/, (): Me => ({
     user: localStorage.getItem(SIGNED_OUT_KEY) ? null : user,
@@ -535,6 +536,29 @@ const routes: [Method, RegExp, Handler][] = [
     if (!r) throw new ApiError(404, "That checkup no longer exists.");
     return progressCheckup(r);
   }],
+  ["GET", /^\/api\/checkups\/(\w+)\/(badge|card)\.svg$/, (m) => {
+    const r = state.checkups.find((x) => x.id === m[1]);
+    if (!r) throw new ApiError(404, "That checkup no longer exists.");
+    if (progressCheckup(r).status !== "done") throw new ApiError(409, "That checkup hasn't finished yet.");
+    return m[2] === "badge" ? S.checkupBadge(r) : S.checkupCard(r);
+  }],
+  ["POST", /^\/api\/promises$/, async (_m, b) => {
+    const p = body<{ repo?: string; days?: number }>(b);
+    const repo = (p.repo ?? "").trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/+$/, "");
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new ApiError(422, "Use the form owner/name, like vercel/next.js.");
+    const days = [7, 30, 90].includes(Number(p.days)) ? Number(p.days) : 30;
+    await sleep(repo.startsWith("acme/") ? 600 : 2600);
+    if (/missing|404|private/.test(repo)) throw new ApiError(422, `GitHub says ${repo} doesn't exist or Keel's token can't see it.`);
+    return S.promiseReport(repo, days);
+  }],
+  ["GET", /^\/api\/teams\/([\w-]+)\/wrapped$/, (m, _b, url) => {
+    const t = team(m[1]);
+    return S.wrappedFacts(t.slug, t.name, Number(url.searchParams.get("days")) || 30);
+  }],
+  ["GET", /^\/api\/teams\/([\w-]+)\/wrapped\/card\.svg$/, (m, _b, url) => {
+    const t = team(m[1]);
+    return S.wrappedCard(S.wrappedFacts(t.slug, t.name, Number(url.searchParams.get("days")) || 30));
+  }],
   ["POST", /^\/api\/demo\/tick$/, () => {
     const fn = script[state.tick];
     if (!fn) return { event: null };
@@ -623,7 +647,7 @@ export const mockTransport: Transport = async (method, path, b) => {
     if (match) {
       const open = /^\/api\/(me|auth|setup)/.test(url.pathname);
       if (!open && localStorage.getItem(SIGNED_OUT_KEY)) throw new ApiError(401, "Sign in to continue.");
-      return clone(h(match, b, url));
+      return clone(await h(match, b, url));
     }
   }
   throw new ApiError(404, `The mock API has no ${method} ${url.pathname}.`);

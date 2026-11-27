@@ -20,6 +20,10 @@ export const qk = {
   checkups: ["checkups"] as const,
   checkup: (id: string) => ["checkup", id] as const,
   setup: ["setup"] as const,
+  checkupSvg: (id: string, kind: "badge" | "card") => ["checkup-svg", id, kind] as const,
+  promises: (repo: string, days: number) => ["promises", repo, days] as const,
+  wrapped: (slug: string, days: number) => ["wrapped", slug, days] as const,
+  wrappedCard: (slug: string, days: number) => ["wrapped-card", slug, days] as const,
 };
 
 export const useMe = () => useQuery({ queryKey: qk.me, queryFn: api.me, staleTime: 60_000 });
@@ -52,6 +56,28 @@ export const useCheckup = (id: string | null) =>
     enabled: !!id,
     refetchInterval: (q) => (q.state.data?.status === "running" ? 1200 : false),
   });
+export const useCheckupSvg = (id: string, kind: "badge" | "card", enabled = true) =>
+  useQuery({
+    queryKey: qk.checkupSvg(id, kind),
+    queryFn: () => (kind === "badge" ? api.checkupBadge(id) : api.checkupCard(id)),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+/** A promise scan can take half a minute with a model, so a finished one is kept for the session. */
+export const usePromiseScan = (repo: string | null, days: number) =>
+  useQuery({
+    queryKey: qk.promises(repo ?? "", days),
+    queryFn: () => api.scanPromises(repo!, days),
+    enabled: !!repo,
+    staleTime: Infinity,
+    gcTime: 60 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+export const useWrapped = (slug: string, days = 30, enabled = true) =>
+  useQuery({ queryKey: qk.wrapped(slug, days), queryFn: () => api.wrapped(slug, days), enabled, staleTime: 5 * 60_000, refetchOnWindowFocus: false });
+export const useWrappedCard = (slug: string, days = 30, enabled = true) =>
+  useQuery({ queryKey: qk.wrappedCard(slug, days), queryFn: () => api.wrappedCard(slug, days), enabled, staleTime: 5 * 60_000, refetchOnWindowFocus: false });
 export const useSetup = () => useQuery({ queryKey: qk.setup, queryFn: api.setup });
 
 /** Invalidate everything that summarises state; cheap enough for this app's size. */

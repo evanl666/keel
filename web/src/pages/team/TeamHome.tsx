@@ -1,12 +1,14 @@
-import { Link, Navigate, useParams } from "react-router";
+import { useEffect, useRef } from "react";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Pause } from "lucide-react";
+import { Gift, Pause } from "lucide-react";
 import { errorLine } from "../../api/client";
 import { usePatchSteward, useTeam } from "../../api/hooks";
 import type { TeamDetail } from "../../api/types";
 import { Card, Skeleton, Switch } from "../../components/ui";
 import { DUTY_META, HealthRing, LevelBadge, StewardAvatar } from "../../components/keel";
 import { useToast } from "../../components/toast";
+import { WrappedStory } from "../../components/Wrapped";
 import { alpha, cn, scrollIntoStrip } from "../../lib/utils";
 import { TodayTab } from "./TodayTab";
 import { LedgerTab, ServicesTab } from "./SimpleTabs";
@@ -62,7 +64,7 @@ function PauseControl({ t }: { t: TeamDetail }) {
   );
 }
 
-function Header({ t }: { t: TeamDetail }) {
+function Header({ t, onWrapped }: { t: TeamDetail; onWrapped: () => void }) {
   return (
     <Card className="overflow-hidden" glow={alpha(t.color, 0.16)}>
       <div className="px-4 pt-4 pb-4 sm:px-7 sm:pt-6 sm:pb-5 flex flex-wrap lg:flex-nowrap items-start gap-4 sm:gap-5">
@@ -130,6 +132,15 @@ function Header({ t }: { t: TeamDetail }) {
             {t.counts.incidents_open} incident open
           </Link>
         )}
+        <button
+          type="button"
+          onClick={onWrapped}
+          className="group sm:ml-auto inline-flex items-center gap-1.5 h-7 max-sm:h-10 px-3 rounded-full text-[12.5px] font-semibold text-white cursor-pointer shadow-soft transition-all hover:brightness-110 hover:-translate-y-px active:scale-[0.98]"
+          style={{ background: `linear-gradient(120deg, ${t.color}, color-mix(in srgb, ${t.color} 35%, #ec4899))` }}
+        >
+          <Gift className="size-3.5 transition-transform group-hover:-rotate-12" />
+          {t.name} Wrapped · last 30 days
+        </button>
       </div>
     </Card>
   );
@@ -138,6 +149,30 @@ function Header({ t }: { t: TeamDetail }) {
 export function TeamHome() {
   const { slug = "", tab = "today" } = useParams();
   const { data: t, isLoading, error } = useTeam(slug);
+  const [params, setParams] = useSearchParams();
+  const wrapped = params.get("wrapped") === "1";
+  const navigate = useNavigate();
+  const openedHere = useRef(false);
+  // Opening pushes a history entry so Back closes the story; a deep link closes in place.
+  const setWrapped = (open: boolean) => {
+    if (!open && openedHere.current) {
+      openedHere.current = false;
+      navigate(-1);
+      return;
+    }
+    openedHere.current = open;
+    setParams(
+      (p) => {
+        if (open) p.set("wrapped", "1");
+        else p.delete("wrapped");
+        return p;
+      },
+      { replace: !open },
+    );
+  };
+  useEffect(() => {
+    if (!wrapped) openedHere.current = false;
+  }, [wrapped]);
   if (!TABS.some((x) => x.id === tab)) return <Navigate to={`/teams/${slug}`} replace />;
   if (error)
     return (
@@ -157,7 +192,8 @@ export function TeamHome() {
   const active = tab as TabId;
   return (
     <div>
-      <Header t={t} />
+      <Header t={t} onWrapped={() => setWrapped(true)} />
+      <AnimatePresence>{wrapped && <WrappedStory key="wrapped" team={t} onClose={() => setWrapped(false)} />}</AnimatePresence>
       <nav className="mt-5 mb-5 -mx-4 px-4 sm:mx-0 sm:px-0 flex items-center gap-1 border-b border-line scroll-x" aria-label="Team sections">
         {TABS.map((x) => (
           <Link

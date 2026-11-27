@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Check, ExternalLink, GitBranch, Loader2, Stethoscope } from "lucide-react";
+import { ArrowRight, Check, Copy, Download, ExternalLink, GitBranch, Loader2, Stethoscope } from "lucide-react";
 import { api, errorLine } from "../api/client";
-import { qk, useCheckup, useCheckups } from "../api/hooks";
+import { qk, useCheckup, useCheckupSvg, useCheckups } from "../api/hooks";
 import type { CheckupFinding, CheckupReport } from "../api/types";
 import { Button, Card, ErrorLine, Input, Skeleton } from "../components/ui";
 import { Ring } from "../components/keel";
+import { useToast } from "../components/toast";
+import { copyText, downloadText, fileSlug, svgDataUrl } from "../lib/share";
 import { ago } from "../lib/time";
 import { cn } from "../lib/utils";
 
@@ -92,6 +94,53 @@ function Running({ r }: { r: CheckupReport }) {
   );
 }
 
+function ShareRow({ r }: { r: CheckupReport }) {
+  const toast = useToast();
+  const badge = useCheckupSvg(r.id, "badge");
+  const [busy, setBusy] = useState<"badge" | "card" | null>(null);
+  const base = `${fileSlug(r.repo)}-checkup`;
+  const download = async (kind: "badge" | "card") => {
+    setBusy(kind);
+    try {
+      const svg = kind === "badge" ? (badge.data ?? (await api.checkupBadge(r.id))) : await api.checkupCard(r.id);
+      downloadText(`${base}-${kind}.svg`, svg);
+    } catch (e) {
+      toast({ title: "The download didn't start", line: errorLine(e), tone: "bad" });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const copyBadge = async () => {
+    const page = `${location.origin}/checkup?id=${encodeURIComponent(r.id)}`;
+    const md = `[![keel checkup](${location.origin}/api/checkups/${encodeURIComponent(r.id)}/badge.svg)](${page})`;
+    try {
+      await copyText(md);
+      toast({ title: "Badge Markdown copied", line: "The badge loads for people signed in to this Keel.", icon: "📋" });
+    } catch (e) {
+      toast({ title: "Nothing was copied", line: errorLine(e), tone: "bad" });
+    }
+  };
+  return (
+    <div className="px-4 sm:px-6 py-4 border-t border-line flex flex-col md:flex-row md:items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="text-[13px] font-semibold">Share it</span>
+        {badge.data ? <img src={svgDataUrl(badge.data)} alt={`keel checkup ${r.grade} · ${r.score}`} className="h-5 w-auto" /> : <Skeleton className="h-5 w-[120px]" />}
+      </div>
+      <div className="md:ml-auto flex flex-wrap gap-2">
+        <Button size="sm" icon={<Copy className="size-3.5" />} onClick={copyBadge}>
+          Copy badge Markdown
+        </Button>
+        <Button size="sm" icon={<Download className="size-3.5" />} loading={busy === "badge"} onClick={() => download("badge")}>
+          Download badge
+        </Button>
+        <Button size="sm" icon={<Download className="size-3.5" />} loading={busy === "card"} onClick={() => download("card")}>
+          Download share card
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Report({ r }: { r: CheckupReport }) {
   const score = r.score ?? 0;
   const color = gradeColor(r.grade);
@@ -165,6 +214,7 @@ function Report({ r }: { r: CheckupReport }) {
             </div>
           ))}
         </div>
+        <ShareRow r={r} />
         <div className="px-4 sm:px-6 py-4 border-t border-line bg-sunken/50 flex items-center gap-3">
           <span className="text-[20px]">🦉</span>
           <div className="text-[13px] text-muted flex-1">A steward would turn the untracked promises into ledger entries and nudge owners before they slip.</div>

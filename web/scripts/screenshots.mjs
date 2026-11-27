@@ -63,6 +63,41 @@ const shots = [
       await sleep(2600);
     },
   },
+  { name: "promises", path: "/promises" },
+  {
+    name: "promises-running",
+    path: "/promises",
+    act: async (p) => {
+      await p.getByLabel("GitHub repository").fill("vercel/next.js");
+      await p.getByRole("button", { name: "Check promises" }).click();
+      await sleep(1500);
+    },
+  },
+  {
+    name: "promises-result",
+    path: "/promises?repo=acme/payments&days=30",
+    full: true,
+    act: async (p) => {
+      await p.getByText("of promises kept", { exact: false }).first().waitFor();
+      await sleep(600);
+    },
+  },
+  { name: "overview-full", path: "/", full: true },
+  ...[0, 1, 2, 3, 4, 5].map((n) => ({
+    name: `wrapped-${n + 1}`,
+    path: "/teams/payments?wrapped=1",
+    act: async (p) => {
+      await p.getByRole("dialog").waitFor();
+      await sleep(400);
+      // Pause auto-advance so the shot shows the slide we stepped to.
+      await p.keyboard.press("Space");
+      for (let i = 0; i < n; i++) {
+        await p.keyboard.press("ArrowRight");
+        await sleep(250);
+      }
+      await sleep(1800);
+    },
+  })),
   { name: "audit", path: "/audit", full: true },
   { name: "setup", path: "/setup" },
   {

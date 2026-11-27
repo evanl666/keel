@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { X, Search, LayoutGrid, Inbox, ListChecks, Send, Activity, Stethoscope, ScrollText, Settings, Sun, Sparkles, Play, CornerDownLeft, Pause } from "lucide-react";
+import { X, Search, LayoutGrid, Inbox, ListChecks, Send, Activity, Stethoscope, Handshake, Gift, ScrollText, Settings, Sun, Sparkles, Play, CornerDownLeft, Pause } from "lucide-react";
 import { api, errorLine } from "../api/client";
 import { useCommitments, useMe, useTeams } from "../api/hooks";
 import { toggleTheme } from "../lib/theme";
@@ -48,6 +48,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       { id: "p-p", group: "Pages", label: "Outbox", hint: "G P", keywords: "operations needs review", icon: <Send />, run: go("/operations") },
       { id: "p-s", group: "Pages", label: "Services", hint: "G S", keywords: "health incidents runbooks", icon: <Activity />, run: go("/services") },
       { id: "p-c", group: "Pages", label: "Team checkup", hint: "G C", keywords: "repo grade report", icon: <Stethoscope />, run: go("/checkup") },
+      { id: "p-pr", group: "Pages", label: "Promise check", keywords: "promises kept github repo comments badge archaeology", icon: <Handshake />, run: go("/promises") },
       { id: "p-u", group: "Pages", label: "Audit log", keywords: "history who", icon: <ScrollText />, run: go("/audit") },
       { id: "p-setup", group: "Pages", label: "Setup", keywords: "slack github model", icon: <Settings />, run: go("/setup") },
     ];
@@ -93,6 +94,14 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             toast({ title: "Nothing changed", line: errorLine(e), tone: "bad" });
           }
         },
+      })),
+      ...teams.map((t) => ({
+        id: `a-wrapped-${t.slug}`,
+        group: "Actions",
+        label: `Open ${t.name} Wrapped`,
+        keywords: `${t.steward.name} month recap year review share card`,
+        icon: <Gift />,
+        run: go(`/teams/${t.slug}?wrapped=1`),
       })),
       { id: "a-theme", group: "Actions", label: "Toggle light / dark", keywords: "theme dark light mode", icon: <Sun />, run: toggleTheme },
       ...(me?.demo

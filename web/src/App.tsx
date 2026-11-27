@@ -15,6 +15,7 @@ import { Approvals } from "./pages/Approvals";
 import { Operations } from "./pages/Operations";
 import { Services } from "./pages/Services";
 import { Checkup } from "./pages/Checkup";
+import { Promises } from "./pages/Promises";
 import { Audit } from "./pages/Audit";
 import { Setup } from "./pages/Setup";
 import { Login } from "./pages/Login";
@@ -88,6 +89,7 @@ function Gate() {
           <Route path="operations" element={<Operations />} />
           <Route path="services" element={<Services />} />
           <Route path="checkup" element={<Checkup />} />
+          <Route path="promises" element={<Promises />} />
           <Route path="audit" element={<Audit />} />
           <Route path="setup" element={<Setup />} />
           <Route path="*" element={<NotFound />} />

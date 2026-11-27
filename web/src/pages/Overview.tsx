@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { motion } from "motion/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Play, ArrowUpRight, Inbox, ShieldCheck } from "lucide-react";
+import { Play, ArrowUpRight, Inbox, ShieldCheck, Gift } from "lucide-react";
 import { useState } from "react";
 import { api, errorLine } from "../api/client";
 import { useMe, useOverview } from "../api/hooks";
@@ -117,6 +117,37 @@ function StewardCard({ t, i }: { t: TeamSummary; i: number }) {
   );
 }
 
+function YourMonth({ teams }: { teams: TeamSummary[] }) {
+  return (
+    <Card className="mt-4 px-4 py-3.5 sm:px-5 flex flex-col md:flex-row md:items-center gap-3 md:gap-5 overflow-hidden" glow="rgba(236,72,153,0.07)">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="grid place-items-center size-9 shrink-0 rounded-xl bg-gradient-to-br from-[#7c5cff] to-[#ec4899] text-white shadow-soft">
+          <Gift className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <div className="text-[13.5px] font-semibold">Your month, wrapped</div>
+          <div className="text-[12.5px] text-muted">The last 30 days of each team's promises, as a story you can share.</div>
+        </div>
+      </div>
+      <div className="md:ml-auto flex flex-wrap gap-2">
+        {teams.map((t) => (
+          <Link
+            key={t.slug}
+            to={`/teams/${t.slug}?wrapped=1`}
+            className="group inline-flex items-center gap-2 h-8 max-sm:h-10 pl-1.5 pr-3 rounded-full border border-line bg-panel text-[12.5px] font-medium text-muted hover:text-fg hover:border-line-strong transition-colors"
+          >
+            <span className="grid place-items-center size-5 rounded-full text-[11px]" style={{ background: alpha(t.color, 0.18) }}>
+              {t.steward.emoji}
+            </span>
+            {t.name}
+            <ArrowUpRight className="size-3 text-faint transition-transform group-hover:translate-x-px group-hover:-translate-y-px" />
+          </Link>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export function Overview() {
   const { data, isLoading } = useOverview();
   const { data: me } = useMe();
@@ -182,6 +213,8 @@ export function Overview() {
           <Skeleton className="h-12" />
         )}
       </Card>
+
+      {data && data.teams.length > 0 && <YourMonth teams={data.teams} />}
 
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
         <Card className="lg:col-span-7 flex flex-col min-w-0">

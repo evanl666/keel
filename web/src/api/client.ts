@@ -18,6 +18,7 @@ import type {
   LoginBody,
   Me,
   OkMessage,
+  PromiseReport,
   Operation,
   Overview,
   PatchCommitmentBody,
@@ -29,6 +30,7 @@ import type {
   StewardSummary,
   TeamDetail,
   TeamSummary,
+  WrappedFacts,
 } from "./types";
 
 export class ApiError extends Error {
@@ -179,6 +181,13 @@ export const api = {
   startCheckup: (repo: string) => post<CheckupReport>("/api/checkups", { repo }),
   checkup: (id: string) => get<CheckupReport>(`/api/checkups/${enc(id)}`),
   checkups: () => get<CheckupReport[]>("/api/checkups"),
+  checkupBadge: (id: string) => get<string>(`/api/checkups/${enc(id)}/badge.svg`),
+  checkupCard: (id: string) => get<string>(`/api/checkups/${enc(id)}/card.svg`),
+
+  scanPromises: (repo: string, days: number) => post<PromiseReport>("/api/promises", { repo, days }),
+
+  wrapped: (slug: string, days = 30) => get<WrappedFacts>(`/api/teams/${enc(slug)}/wrapped?days=${days}`),
+  wrappedCard: (slug: string, days = 30) => get<string>(`/api/teams/${enc(slug)}/wrapped/card.svg?days=${days}`),
 
   demoTick: () => post<{ event: ActivityItem | null }>("/api/demo/tick"),
 };

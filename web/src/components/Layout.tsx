@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutGrid, Inbox, ListChecks, Send, Activity, Stethoscope, ScrollText, Settings, Sun, Moon, Search, LogOut, Keyboard, ChevronsUpDown, Menu, X } from "lucide-react";
+import { LayoutGrid, Inbox, ListChecks, Send, Activity, Stethoscope, Handshake, ScrollText, Settings, Sun, Moon, Search, LogOut, Keyboard, ChevronsUpDown, Menu, X } from "lucide-react";
 import { api } from "../api/client";
 import { useApprovals, useMe, useOperations, useOverview, useTeams } from "../api/hooks";
 import { toggleTheme, useTheme } from "../lib/theme";
@@ -190,6 +190,7 @@ function Sidebar({ onSearch, onHelp, drawer, open, onClose }: { onSearch: () => 
         <NavItem to="/operations" icon={<Send />} label="Outbox" count={needsReview} tone="warn" />
         <NavItem to="/services" icon={<Activity />} label="Services" count={ov?.totals.incidents_open} tone="bad" />
         <NavItem to="/checkup" icon={<Stethoscope />} label="Checkup" />
+        <NavItem to="/promises" icon={<Handshake />} label="Promises" />
         <NavItem to="/audit" icon={<ScrollText />} label="Audit log" />
       </nav>
 
