@@ -370,11 +370,8 @@ def mcp(
     ),
 ) -> None:
     """Run an MCP server on stdio so Claude Code, Cursor or any MCP client can talk to your teams' stewards."""
-    try:
-        from keel import mcp_server
-    except ImportError as exc:
-        console.print("[red]✗[/] The MCP extra isn't installed. Run: pip install 'keel-steward[mcp]'")
-        raise typer.Exit(1) from exc
+    from keel import mcp_server
+
     mcp_server.serve(user)
 
 

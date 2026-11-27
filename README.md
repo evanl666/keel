@@ -4,7 +4,7 @@
 the front desk, runs the daily rhythm, watches its services and carries requests between teams, and only does
 what the team has trusted it to do.
 
-[中文说明](#中文) · [Quickstart](#quickstart) · [How it works](#how-it-works) · [Deploy](#deploy) · [API](docs/api.md)
+[中文说明](#中文) · [Try it](#three-things-to-try-in-a-minute) · [Quickstart](#quickstart) · [How it works](#how-it-works) · [Deploy](#deploy) · [API](docs/api.md)
 
 ![Overview: three teams, their stewards, cross-team requests and live activity](docs/screenshots/overview.png)
 
@@ -17,6 +17,49 @@ keel demo                             # a live company of three teams in your br
 
 > v0.1 isn't on PyPI or GHCR yet, so install from source as above. Once published, this becomes
 > `pipx install keel-steward` and the release wheel carries the built UI.
+
+## Three things to try in a minute
+
+**"I'll send a PR by Friday."** Somebody wrote that on your repo last month. Did they?
+
+```bash
+keel promises langchain-ai/deepagents --badge promises.svg --card card.svg
+```
+
+Keel reads a repo's recent comments, finds the promises ("I'll fix this", "working on it", "PR coming"), and
+checks each one against what happened next: kept, overdue, gone quiet, dropped, or pushed to a follow-up.
+Rules find candidates; a model, if you set one (`--provider`), throws out the false alarms and writes the
+titles. You get a table, a README badge and a share card. Real run, 30 days of `langchain-ai/deepagents`:
+
+![Promise check card: 44% of 13 promises kept](docs/screenshots/promise-card.png)
+
+The card never names anyone; the table links each promise so maintainers can follow up kindly.
+
+**Team Wrapped.** Spotify Wrapped for a team's promises: on-time rate, longest streak, fastest close, best
+partner team, and a persona (The Closers, The Good Neighbours, The Speedrunners…).
+
+```bash
+keel wrapped payments --card wrapped.svg       # also at /api/teams/payments/wrapped/card.svg
+```
+
+![Team Wrapped card for Payments](docs/screenshots/wrapped-card.png)
+
+**Your steward inside your editor.** `keel mcp` is an MCP server, so Claude Code, Cursor or any MCP client can
+ask a team's steward, see what's overdue, and log a promise without leaving the editor.
+
+```bash
+claude mcp add keel -- keel mcp --as you@acme.example          # Claude Code
+```
+
+```json
+{ "mcpServers": { "keel": { "command": "keel", "args": ["mcp", "--as", "you@acme.example"] } } }
+```
+
+Tools: `list_teams`, `ask_team`, `list_commitments`, `log_commitment`, `update_commitment`, `team_wrapped`,
+`find_promises`. Without `--as` it's read-only. Answers respect labels: restricted notes never leave Keel.
+
+Badges for any checkup too: `keel checkup owner/repo --badge checkup.svg`, or
+`/api/checkups/{id}/badge.svg` from a running Keel.
 
 ---
 
@@ -204,10 +247,10 @@ Not yet, on purpose:
 ## Develop
 
 ```bash
-uv sync --extra dev --extra all
+uv sync --extra all
 uv run pytest                                              # unit, API and gateway tests on SQLite
 KEEL_TEST_DATABASE_URL=postgresql+psycopg://... uv run pytest -m postgres
-KEEL_LIVE_PROVIDER=claude_code uv run pytest -m live      # real model calls
+KEEL_LIVE_PROVIDER=claude_code GITHUB_TOKEN=$(gh auth token) uv run pytest -m live   # real model calls
 (cd web && npm ci && npm run dev)                          # UI on :5173, proxies /api to :8420
 (cd web && npm run dev:mock)                                # UI on mock data, no backend
 keel demo --port 8431 --fresh & node web/scripts/e2e-real.mjs /tmp/shots   # every page on the real backend
@@ -251,6 +294,16 @@ keel checkup vercel/next.js     # 给真实仓库做体检，只读
 设置向导依次引导：**管理员 → 模型 → Slack → GitHub → 策略 → 第一个团队**；每一步先测试连接再保存，
 失败时用一句话说明原因。配置即代码用 `keel apply -f keel.yaml`；内网 runbook 用 `keel runner`
 （只执行它本地白名单里的命令，服务器只发 runbook id，从不下发命令）。
+
+### 一分钟能玩的三件事
+
+- **承诺考古 `keel promises owner/repo`**：上个月有人在你的仓库里写了“周五前我提个 PR”，他做到了吗？Keel 读取近期评论，
+  找出承诺（“我来修”“在做了”“PR 马上来”），再看后来发生了什么：兑现、逾期、没下文、放弃、挪到后续 PR。规则先找候选，
+  配了模型（`--provider`）就由模型剔除误报并写标题。输出表格、README 徽章和分享卡片；卡片上不点名任何人。
+- **团队年终总结 Team Wrapped `keel wrapped <team>`**：团队一个月的承诺回顾：按时率、最长连胜、最快关闭、最佳搭档团队，
+  外加一个人设（The Closers、The Good Neighbours、The Speedrunners……）。
+- **编辑器里的管家 `keel mcp`**：MCP 服务器，Claude Code、Cursor 等可直接问团队管家、看逾期、记承诺。
+  不加 `--as` 时只读；受限内容永远不出 Keel。
 
 ### 可靠性说明（如实）
 
