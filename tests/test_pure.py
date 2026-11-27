@@ -38,12 +38,21 @@ def test_unknown_action_needs_act_level() -> None:
     assert not levels.may_act_alone(2, "something.new")
 
 
-@pytest.mark.parametrize(("status", "cls"), [
-    (503, errors.UNKNOWN_OUTCOME), (502, errors.UNKNOWN_OUTCOME), (504, errors.UNKNOWN_OUTCOME),
-    (500, errors.UNKNOWN_OUTCOME), (408, errors.UNKNOWN_OUTCOME),
-    (403, errors.PERMISSION_DENIED), (401, errors.AUTH_INVALID), (404, errors.NOT_FOUND),
-    (429, errors.RATE_LIMITED), (422, errors.BAD_REQUEST),
-])
+@pytest.mark.parametrize(
+    ("status", "cls"),
+    [
+        (503, errors.UNKNOWN_OUTCOME),
+        (502, errors.UNKNOWN_OUTCOME),
+        (504, errors.UNKNOWN_OUTCOME),
+        (500, errors.UNKNOWN_OUTCOME),
+        (408, errors.UNKNOWN_OUTCOME),
+        (403, errors.PERMISSION_DENIED),
+        (401, errors.AUTH_INVALID),
+        (404, errors.NOT_FOUND),
+        (429, errors.RATE_LIMITED),
+        (422, errors.BAD_REQUEST),
+    ],
+)
 def test_http_classes(status: int, cls: str) -> None:
     assert errors.classify_http("GitHub", status).error_class == cls
 
@@ -56,7 +65,10 @@ def test_403_is_not_credential_expiry_unless_rate_limit() -> None:
 
 def test_transport_errors_depend_on_whether_sent() -> None:
     assert errors.classify_transport("Slack", TimeoutError(), sent=True).error_class == errors.UNKNOWN_OUTCOME
-    assert errors.classify_transport("Slack", ConnectionRefusedError(), sent=False).error_class == errors.UNREACHABLE
+    assert (
+        errors.classify_transport("Slack", ConnectionRefusedError(), sent=False).error_class
+        == errors.UNREACHABLE
+    )
 
 
 def test_slack_codes() -> None:
@@ -89,10 +101,13 @@ def test_bm25_empty_inputs() -> None:
 
 def test_bm25_single_and_ranking() -> None:
     assert [p.title for p in knowledge.bm25("rotate", [_p("keys", "how to rotate keys")])] == ["keys"]
-    ranked = knowledge.bm25("webhook secret rotation", [
-        _p("lunch", "team lunch is on friday"),
-        _p("webhooks", "rotate the webhook secret: webhook secret rotation runbook"),
-        _p("deploy", "deploys use the secret store"),
-    ])
+    ranked = knowledge.bm25(
+        "webhook secret rotation",
+        [
+            _p("lunch", "team lunch is on friday"),
+            _p("webhooks", "rotate the webhook secret: webhook secret rotation runbook"),
+            _p("deploy", "deploys use the secret store"),
+        ],
+    )
     assert ranked[0].title == "webhooks"
     assert "lunch" not in [p.title for p in ranked]

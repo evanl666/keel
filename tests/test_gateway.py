@@ -51,13 +51,31 @@ def remote(team: models.Team) -> Remote:
     return r
 
 
-def _propose(team: models.Team, *, text: str = "Heads up: deploy at 3pm", kind: str = "slack.post_team",
-             label: str = "internal", audience_kind: str = "team", actor: str = "steward") -> str:
+def _propose(
+    team: models.Team,
+    *,
+    text: str = "Heads up: deploy at 3pm",
+    kind: str = "slack.post_team",
+    label: str = "internal",
+    audience_kind: str = "team",
+    actor: str = "steward",
+) -> str:
     with db.session() as s:
         t = s.get(models.Team, team.id)
-        op = gateway.propose(s, gateway.Proposal(team=t, kind=kind, target="#payments", payload={"text": text},
-                                                 summary=text[:60], op_id=f"test:{uuid.uuid4()}", label=label,
-                                                 audience_kind=audience_kind, actor=actor))
+        op = gateway.propose(
+            s,
+            gateway.Proposal(
+                team=t,
+                kind=kind,
+                target="#payments",
+                payload={"text": text},
+                summary=text[:60],
+                op_id=f"test:{uuid.uuid4()}",
+                label=label,
+                audience_kind=audience_kind,
+                actor=actor,
+            ),
+        )
         return op.id
 
 
@@ -72,7 +90,9 @@ def _run_due_jobs_now() -> None:
     """Drain, pulling delayed reconcile jobs forward so the test needn't wait RECONCILE_DELAY."""
     for _ in range(6):
         with db.session() as s:
-            s.execute(sa.update(models.Job).where(models.Job.status == "queued").values(run_at=models.utcnow()))
+            s.execute(
+                sa.update(models.Job).where(models.Job.status == "queued").values(run_at=models.utcnow())
+            )
         if worker.drain() == 0:
             return
 
@@ -80,8 +100,14 @@ def _run_due_jobs_now() -> None:
 def test_propose_is_idempotent_on_op_id(team: models.Team, remote: Remote) -> None:
     with db.session() as s:
         t = s.get(models.Team, team.id)
-        p = gateway.Proposal(team=t, kind="slack.post_team", target="#payments", payload={"text": "hi"}, summary="hi",
-                             op_id="same-id")
+        p = gateway.Proposal(
+            team=t,
+            kind="slack.post_team",
+            target="#payments",
+            payload={"text": "hi"},
+            summary="hi",
+            op_id="same-id",
+        )
         first = gateway.propose(s, p).id
         assert gateway.propose(s, p).id == first
         assert s.scalar(sa.select(sa.func.count()).select_from(models.Operation)) == 1
@@ -153,7 +179,9 @@ def test_unreachable_retries_later(team: models.Team, remote: Remote) -> None:
     assert op.status == "intent_recorded" and op.next_attempt_at is not None
     assert remote.writes == []
     with db.session() as s:  # let the backoff elapse
-        s.execute(sa.update(models.Operation).values(next_attempt_at=models.utcnow() - dt.timedelta(seconds=1)))
+        s.execute(
+            sa.update(models.Operation).values(next_attempt_at=models.utcnow() - dt.timedelta(seconds=1))
+        )
     _run_due_jobs_now()
     assert _op(op_id).status == "done"
     assert len(remote.writes) == 1
@@ -170,6 +198,42 @@ def test_level_gate_waits_for_approval(team: models.Team, remote: Remote) -> Non
         gateway.approve(s, approval, user)
     _run_due_jobs_now()
     assert _op(op_id).status == "done"
+
+
+def test_preview_shows_the_message_not_routing_ids() -> None:
+    assert gateway._preview_of({"channel": "C0123", "text": "Deploy at 3pm"}) == "Deploy at 3pm"
+    assert (
+        gateway._preview_of({"repo": "acme/api", "title": "Fix CI", "body": "It fails."})
+        == "Fix CI\n\nIt fails."
+    )
+    assert gateway._preview_of({"service": "api", "runbook": "restart"}) == "restart"
+    assert gateway._preview_of({}) == ""
+
+
+def test_editing_a_titled_draft_updates_title_and_body(team: models.Team, remote: Remote) -> None:
+    with db.session() as s:
+        t = s.get(models.Team, team.id)
+        op = gateway.propose(
+            s,
+            gateway.Proposal(
+                team=t,
+                kind="github.create_issue",
+                target="acme/api",
+                payload={"repo": "acme/api", "title": "Fix CI", "body": "It fails."},
+                summary="Fix CI",
+                op_id=f"test:{uuid.uuid4()}",
+                label="internal",
+            ),
+        )
+        op_id = op.id
+    with db.session() as s:
+        approval = s.scalar(sa.select(models.Approval))
+        assert approval.preview == "Fix CI\n\nIt fails."
+        gateway.approve(
+            s, approval, s.scalar(sa.select(models.User)), edited_preview="Fix CI on main\n\nIt fails daily."
+        )
+    op = _op(op_id)
+    assert op.payload == {"repo": "acme/api", "title": "Fix CI on main", "body": "It fails daily."}
 
 
 def test_label_gate_blocks_confidential_to_other_team(team: models.Team, remote: Remote) -> None:
@@ -194,7 +258,10 @@ def test_canary_blocks_pauses_and_demotes(team: models.Team, remote: Remote) -> 
 
 
 def test_human_writes_skip_the_level_gate_but_not_the_label_gate(team: models.Team, remote: Remote) -> None:
-    assert _op(_propose(team, kind="github.create_issue", actor="user:ada@test.example")).status == "intent_recorded"
+    assert (
+        _op(_propose(team, kind="github.create_issue", actor="user:ada@test.example")).status
+        == "intent_recorded"
+    )
     blocked = _op(_propose(team, label="restricted", actor="user:ada@test.example"))
     assert blocked.status == "rejected"
 
@@ -218,9 +285,20 @@ def test_resolve_retry_and_cancel(team: models.Team) -> None:
 def test_runner_claims_once_and_failure_is_final(team: models.Team) -> None:
     with db.session() as s:
         t = s.get(models.Team, team.id)
-        op = models.Operation(org_id=t.org_id, team_id=t.id, op_id="run:1", kind="runbook.run", target="restart",
-                              summary="Restart api", payload={}, status="dispatching", created_by="steward", remote_ref="runner:pending",
-                              attempts=1, lease_until=models.utcnow() + dt.timedelta(minutes=5))
+        op = models.Operation(
+            org_id=t.org_id,
+            team_id=t.id,
+            op_id="run:1",
+            kind="runbook.run",
+            target="restart",
+            summary="Restart api",
+            payload={},
+            status="dispatching",
+            created_by="steward",
+            remote_ref="runner:pending",
+            attempts=1,
+            lease_until=models.utcnow() + dt.timedelta(minutes=5),
+        )
         s.add(op)
     with db.session() as s:
         claimed = gateway.runner_claim(s, "box-1")

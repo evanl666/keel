@@ -114,18 +114,32 @@ def _team(s: orm.Session, org: models.Org, spec: TeamSpec, out: list[Change]) ->
     if team is None:
         if spec.level is not None:
             levels.level_def(spec.level)
-        team = routes.create_team(s, org, routes.NewTeam(name=spec.name, slug=spec.slug, steward_name=spec.steward.name,
-                                                         emoji=spec.steward.emoji, slack_channel=spec.slack_channel),
-                                  None, level=spec.level)
-        out.append(("create", f"team {spec.slug} with steward {spec.steward.name} at "
-                              f"L{gateway_level(s, team)}"))
+        team = routes.create_team(
+            s,
+            org,
+            routes.NewTeam(
+                name=spec.name,
+                slug=spec.slug,
+                steward_name=spec.steward.name,
+                emoji=spec.steward.emoji,
+                slack_channel=spec.slack_channel,
+            ),
+            None,
+            level=spec.level,
+        )
+        out.append(
+            ("create", f"team {spec.slug} with steward {spec.steward.name} at L{gateway_level(s, team)}")
+        )
     else:
         changed = []
         if team.name != spec.name:
             team.name = spec.name
             changed.append("name")
-        if spec.slack_channel and spec.slack_channel not in (team.slack_channel_id, team.slack_channel_name,
-                                                             f"#{team.slack_channel_name}"):
+        if spec.slack_channel and spec.slack_channel not in (
+            team.slack_channel_id,
+            team.slack_channel_name,
+            f"#{team.slack_channel_name}",
+        ):
             ch = spec.slack_channel
             if ch[:1] in "CG" and ch[1:].isalnum() and ch.isupper():
                 team.slack_channel_id = ch
@@ -136,7 +150,9 @@ def _team(s: orm.Session, org: models.Org, spec: TeamSpec, out: list[Change]) ->
             out.append(("update", f"team {spec.slug}: {', '.join(changed)}"))
         else:
             out.append(("keep", f"team {spec.slug}"))
-    if [r.lower() for r in team.github_repos or []] != [r.lower() for r in spec.github_repos] and spec.github_repos:
+    if [r.lower() for r in team.github_repos or []] != [
+        r.lower() for r in spec.github_repos
+    ] and spec.github_repos:
         team.github_repos = spec.github_repos
         out.append(("update", f"team {spec.slug}: repos {', '.join(spec.github_repos)}"))
     if spec.timezone and spec.timezone != team.timezone:
@@ -174,23 +190,37 @@ def _steward(s: orm.Session, team: models.Team, spec: TeamSpec, out: list[Change
             levels.set_level(s, st, spec.level, f"Lowered by {ACTOR}.", ACTOR)
             out.append(("update", f"{spec.slug} level lowered to L{spec.level}"))
         else:
-            out.append(("skip", f"{spec.slug} level stays L{st.level}: raising a level needs a person on the level page"))
+            out.append(
+                (
+                    "skip",
+                    f"{spec.slug} level stays L{st.level}: raising a level needs a person on the level page",
+                )
+            )
 
 
 def _services(s: orm.Session, team: models.Team, spec: TeamSpec, out: list[Change]) -> None:
     for sv in spec.services:
-        row = s.scalar(sa.select(models.Service).where(models.Service.team_id == team.id, models.Service.name == sv.name))
+        row = s.scalar(
+            sa.select(models.Service).where(models.Service.team_id == team.id, models.Service.name == sv.name)
+        )
         rbs = [r.model_dump() for r in sv.runbooks]
         if row is None:
             services.add(s, team, sv.name, sv.url, sv.owner, rbs, sv.interval_s)
             out.append(("create", f"{spec.slug} service {sv.name} ({sv.url})"))
-        elif (row.url, row.owner, row.runbooks, row.interval_s) != (sv.url, sv.owner, rbs, max(sv.interval_s, services.MIN_INTERVAL_S)):
+        elif (row.url, row.owner, row.runbooks, row.interval_s) != (
+            sv.url,
+            sv.owner,
+            rbs,
+            max(sv.interval_s, services.MIN_INTERVAL_S),
+        ):
             row.url, row.owner, row.runbooks = sv.url, sv.owner, rbs
             row.interval_s = max(sv.interval_s, services.MIN_INTERVAL_S)
             out.append(("update", f"{spec.slug} service {sv.name}"))
 
 
-def _knowledge(s: orm.Session, team: models.Team, spec: TeamSpec, base_dir: pathlib.Path, out: list[Change]) -> None:
+def _knowledge(
+    s: orm.Session, team: models.Team, spec: TeamSpec, base_dir: pathlib.Path, out: list[Change]
+) -> None:
     for d in spec.knowledge:
         labels.rank(d.label)
         if d.path:
@@ -198,19 +228,29 @@ def _knowledge(s: orm.Session, team: models.Team, spec: TeamSpec, base_dir: path
             if not p.is_file():
                 out.append(("skip", f"{spec.slug} knowledge {d.path}: file not found"))
                 continue
-            content, title, source = p.read_text(errors="replace"), d.title or p.stem.replace("-", " ").title(), f"file://{d.path}"
+            content, title, source = (
+                p.read_text(errors="replace"),
+                d.title or p.stem.replace("-", " ").title(),
+                f"file://{d.path}",
+            )
         else:
             content, title, source = d.content or "", d.title or "Untitled", None
-        existing = s.scalar(sa.select(models.KnowledgeDoc).where(
-            models.KnowledgeDoc.team_id == team.id,
-            models.KnowledgeDoc.source == (source or f"keel://{team.slug}/{title.lower().replace(' ', '-')}")))
+        existing = s.scalar(
+            sa.select(models.KnowledgeDoc).where(
+                models.KnowledgeDoc.team_id == team.id,
+                models.KnowledgeDoc.source
+                == (source or f"keel://{team.slug}/{title.lower().replace(' ', '-')}"),
+            )
+        )
         if existing is not None and existing.content == content and existing.label == d.label:
             continue
         knowledge.add(s, team, title, content, d.label, source, actor=ACTOR)
         out.append(("update" if existing else "create", f"{spec.slug} knowledge {title} [{d.label}]"))
 
 
-def apply(s: orm.Session, plan: Plan, base_dir: pathlib.Path = pathlib.Path("."), dry_run: bool = False) -> list[Change]:
+def apply(
+    s: orm.Session, plan: Plan, base_dir: pathlib.Path = pathlib.Path("."), dry_run: bool = False
+) -> list[Change]:
     """Make the database match the plan. Never deletes; returns what changed.
 
     With ``dry_run`` the session is rolled back before returning, so nothing is written. Otherwise the caller commits.
@@ -226,7 +266,12 @@ def apply(s: orm.Session, plan: Plan, base_dir: pathlib.Path = pathlib.Path(".")
         s.rollback()
         return out
     if any(v in ("create", "update") for v, _ in out):
-        feed.audit(s, org.id, ACTOR, "apply", f"{len(plan.teams)} teams",
-                   "; ".join(w for v, w in out if v in ("create", "update"))[:2000])
+        feed.audit(
+            s,
+            org.id,
+            ACTOR,
+            "apply",
+            f"{len(plan.teams)} teams",
+            "; ".join(w for v, w in out if v in ("create", "update"))[:2000],
+        )
     return out
-

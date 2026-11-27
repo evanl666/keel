@@ -14,17 +14,29 @@ from sqlalchemy import orm
 from keel import feed, jobs, models
 
 
-def record(session: orm.Session, org_id: str, team_id: str | None, source: str, external_id: str, kind: str,
-           payload: dict[str, typing.Any]) -> models.InboxEvent | None:
+def record(
+    session: orm.Session,
+    org_id: str,
+    team_id: str | None,
+    source: str,
+    external_id: str,
+    kind: str,
+    payload: dict[str, typing.Any],
+) -> models.InboxEvent | None:
     """Store an inbound event and queue it. Returns None when it was already received."""
-    exists = session.scalar(sa.select(models.InboxEvent.id).where(
-        models.InboxEvent.org_id == org_id, models.InboxEvent.source == source,
-        models.InboxEvent.external_id == external_id))
+    exists = session.scalar(
+        sa.select(models.InboxEvent.id).where(
+            models.InboxEvent.org_id == org_id,
+            models.InboxEvent.source == source,
+            models.InboxEvent.external_id == external_id,
+        )
+    )
     if exists is not None:
         feed.INBOX_EVENTS.labels(source=source, result="duplicate").inc()
         return None
-    ev = models.InboxEvent(org_id=org_id, team_id=team_id, source=source, external_id=external_id, kind=kind,
-                           payload=payload)
+    ev = models.InboxEvent(
+        org_id=org_id, team_id=team_id, source=source, external_id=external_id, kind=kind, payload=payload
+    )
     try:
         with session.begin_nested():
             session.add(ev)

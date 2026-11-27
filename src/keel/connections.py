@@ -28,15 +28,34 @@ class Resolved:
 def _env(kind: str) -> Resolved | None:
     s = config.get()
     if kind == "slack" and s.slack_bot_token:
-        return Resolved("slack", {}, {"bot_token": s.slack_bot_token, "app_token": s.slack_app_token,
-                                      "signing_secret": s.slack_signing_secret}, "env")
+        return Resolved(
+            "slack",
+            {},
+            {
+                "bot_token": s.slack_bot_token,
+                "app_token": s.slack_app_token,
+                "signing_secret": s.slack_signing_secret,
+            },
+            "env",
+        )
     if kind == "github" and (s.github_token or s.github_app_id):
-        return Resolved("github", {"app_id": s.github_app_id, "installation_id": s.github_installation_id,
-                                   "api_url": s.github_api_url},
-                        {"token": s.github_token, "private_key": s.github_app_private_key}, "env")
+        return Resolved(
+            "github",
+            {
+                "app_id": s.github_app_id,
+                "installation_id": s.github_installation_id,
+                "api_url": s.github_api_url,
+            },
+            {"token": s.github_token, "private_key": s.github_app_private_key},
+            "env",
+        )
     if kind == "model" and s.model_provider:
-        return Resolved("model", {"provider": s.model_provider, "model": s.model_name, "base_url": s.model_base_url},
-                        {"api_key": s.model_api_key}, "env")
+        return Resolved(
+            "model",
+            {"provider": s.model_provider, "model": s.model_name, "base_url": s.model_base_url},
+            {"api_key": s.model_api_key},
+            "env",
+        )
     return None
 
 
@@ -45,8 +64,9 @@ def resolve(session: orm.Session, org_id: str, kind: str) -> Resolved:
     env = _env(kind)
     if env is not None:
         return env
-    row = session.scalar(sa.select(models.Connection).where(models.Connection.org_id == org_id,
-                                                            models.Connection.kind == kind))
+    row = session.scalar(
+        sa.select(models.Connection).where(models.Connection.org_id == org_id, models.Connection.kind == kind)
+    )
     if row is None:
         return Resolved(kind, {}, {}, "none")
     return Resolved(kind, dict(row.config), vault.unseal(row.secret_enc), "db")
@@ -54,8 +74,9 @@ def resolve(session: orm.Session, org_id: str, kind: str) -> Resolved:
 
 def store(session: orm.Session, org_id: str, kind: str, cfg: dict[str, str], secrets: dict[str, str]) -> None:
     """Save settings from the setup wizard. Empty secret values keep the stored ones."""
-    row = session.scalar(sa.select(models.Connection).where(models.Connection.org_id == org_id,
-                                                            models.Connection.kind == kind))
+    row = session.scalar(
+        sa.select(models.Connection).where(models.Connection.org_id == org_id, models.Connection.kind == kind)
+    )
     if row is None:
         row = models.Connection(org_id=org_id, kind=kind)
         session.add(row)
@@ -68,7 +89,8 @@ def store(session: orm.Session, org_id: str, kind: str, cfg: dict[str, str], sec
 
 def mark(session: orm.Session, org_id: str, kind: str, status: str, line: str) -> None:
     """Record a connection's health (e.g. after a 401) so the UI shows why on its row."""
-    row = session.scalar(sa.select(models.Connection).where(models.Connection.org_id == org_id,
-                                                            models.Connection.kind == kind))
+    row = session.scalar(
+        sa.select(models.Connection).where(models.Connection.org_id == org_id, models.Connection.kind == kind)
+    )
     if row is not None:
         row.status, row.status_line = status, line

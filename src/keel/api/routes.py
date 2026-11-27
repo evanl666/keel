@@ -57,6 +57,7 @@ def _parse_due(value: str | None, team: models.Team) -> dt.datetime | None:
 
 # ---------------------------------------------------------------- overview and teams
 
+
 @router.get("/overview")
 def overview(s: deps.Session, u: deps.User) -> dict:
     """Org overview: teams, cross-team graph, totals and recent activity."""
@@ -65,30 +66,62 @@ def overview(s: deps.Session, u: deps.User) -> dict:
     now = models.utcnow()
     teams = [serial.team_summary(s, t, now) for t in sorted(idx.teams.values(), key=lambda t: t.created_at)]
     edges: dict[tuple[str, str], dict] = {}
-    for c in s.scalars(sa.select(models.Commitment).where(models.Commitment.org_id == u.org_id,
-                                                          models.Commitment.requester_team_id.is_not(None),
-                                                          models.Commitment.status.in_(ledger.OPEN_STATUSES))):
+    for c in s.scalars(
+        sa.select(models.Commitment).where(
+            models.Commitment.org_id == u.org_id,
+            models.Commitment.requester_team_id.is_not(None),
+            models.Commitment.status.in_(ledger.OPEN_STATUSES),
+        )
+    ):
         key = (idx.slug(c.requester_team_id) or "", idx.slug(c.owner_team_id) or "")
         e = edges.setdefault(key, {"from_team": key[0], "to_team": key[1], "open": 0, "at_risk": 0})
         e["open"] += 1
         e["at_risk"] += ledger.risk(c, now) in ("at_risk", "overdue")
-    done_7d = s.scalar(sa.select(sa.func.count()).select_from(models.Commitment).where(
-        models.Commitment.org_id == u.org_id, models.Commitment.status == "done",
-        models.Commitment.closed_at >= now - dt.timedelta(days=7))) or 0
-    review = s.scalar(sa.select(sa.func.count()).select_from(models.Operation).where(
-        models.Operation.org_id == u.org_id, models.Operation.status == "needs_review")) or 0
-    acts = s.scalars(sa.select(models.Activity).where(models.Activity.org_id == u.org_id)
-                     .order_by(models.Activity.id.desc()).limit(OVERVIEW_ACTIVITY))
-    totals = {k: sum(t["counts"][k] for t in teams) for k in ("open", "at_risk", "overdue", "pending_approvals", "incidents_open")}
-    return {"org": {"id": org.id, "name": org.name}, "teams": teams, "cross_team": list(edges.values()),
-            "totals": {**totals, "done_7d": done_7d, "ops_needs_review": review},
-            "activity": [serial.activity(a, idx) for a in acts]}
+    done_7d = (
+        s.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.Commitment)
+            .where(
+                models.Commitment.org_id == u.org_id,
+                models.Commitment.status == "done",
+                models.Commitment.closed_at >= now - dt.timedelta(days=7),
+            )
+        )
+        or 0
+    )
+    review = (
+        s.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.Operation)
+            .where(models.Operation.org_id == u.org_id, models.Operation.status == "needs_review")
+        )
+        or 0
+    )
+    acts = s.scalars(
+        sa.select(models.Activity)
+        .where(models.Activity.org_id == u.org_id)
+        .order_by(models.Activity.id.desc())
+        .limit(OVERVIEW_ACTIVITY)
+    )
+    totals = {
+        k: sum(t["counts"][k] for t in teams)
+        for k in ("open", "at_risk", "overdue", "pending_approvals", "incidents_open")
+    }
+    return {
+        "org": {"id": org.id, "name": org.name},
+        "teams": teams,
+        "cross_team": list(edges.values()),
+        "totals": {**totals, "done_7d": done_7d, "ops_needs_review": review},
+        "activity": [serial.activity(a, idx) for a in acts],
+    }
 
 
 @router.get("/teams")
 def list_teams(s: deps.Session, u: deps.User) -> list[dict]:
     """All teams in the org."""
-    rows = s.scalars(sa.select(models.Team).where(models.Team.org_id == u.org_id).order_by(models.Team.created_at))
+    rows = s.scalars(
+        sa.select(models.Team).where(models.Team.org_id == u.org_id).order_by(models.Team.created_at)
+    )
     return [serial.team_summary(s, t) for t in rows]
 
 
@@ -102,8 +135,9 @@ class NewTeam(pydantic.BaseModel):
     github_repo: str | None = None
 
 
-def create_team(s: sa.orm.Session, org: models.Org, body: NewTeam, actor: models.User | None,
-                level: int | None = None) -> models.Team:
+def create_team(
+    s: sa.orm.Session, org: models.Org, body: NewTeam, actor: models.User | None, level: int | None = None
+) -> models.Team:
     """Create a team with its steward at the org's default level."""
     name = body.name.strip()
     if not name:
@@ -115,8 +149,13 @@ def create_team(s: sa.orm.Session, org: models.Org, body: NewTeam, actor: models
         raise ValueError(f"There's already a team called {slug}.")
     n = s.scalar(sa.select(sa.func.count()).select_from(models.Team).where(models.Team.org_id == org.id)) or 0
     channel = (body.slack_channel or "").strip()
-    team = models.Team(org_id=org.id, slug=slug, name=name, color=body.color or PALETTE[n % len(PALETTE)],
-                       github_repos=[body.github_repo.strip()] if body.github_repo else [])
+    team = models.Team(
+        org_id=org.id,
+        slug=slug,
+        name=name,
+        color=body.color or PALETTE[n % len(PALETTE)],
+        github_repos=[body.github_repo.strip()] if body.github_repo else [],
+    )
     if channel:
         if re.fullmatch(r"[CG][A-Z0-9]{6,}", channel):
             team.slack_channel_id = channel
@@ -125,14 +164,36 @@ def create_team(s: sa.orm.Session, org: models.Org, body: NewTeam, actor: models
     s.add(team)
     s.flush()
     level = int(org.settings.get("default_level", 1)) if level is None else level
-    s.add(models.Steward(org_id=org.id, team_id=team.id, name=(body.steward_name or "Pip").strip()[:60],
-                         emoji=body.emoji or EMOJIS[n % len(EMOJIS)], level=level, duties=list(demo.ALL_DUTIES)))
+    s.add(
+        models.Steward(
+            org_id=org.id,
+            team_id=team.id,
+            name=(body.steward_name or "Pip").strip()[:60],
+            emoji=body.emoji or EMOJIS[n % len(EMOJIS)],
+            level=level,
+            duties=list(demo.ALL_DUTIES),
+        )
+    )
     if actor is not None:
         s.add(models.TeamMember(team_id=team.id, user_id=actor.id, role="team_admin"))
-    feed.activity(s, org.id, team.id, "level", "🎉", f"{name} got a steward: {body.steward_name or 'Pip'} at L{level}",
-                  f"/teams/{slug}")
-    feed.audit(s, org.id, f"user:{actor.email}" if actor else "keel apply", "team.created", slug, f"level={level}",
-               team.id)
+    feed.activity(
+        s,
+        org.id,
+        team.id,
+        "level",
+        "🎉",
+        f"{name} got a steward: {body.steward_name or 'Pip'} at L{level}",
+        f"/teams/{slug}",
+    )
+    feed.audit(
+        s,
+        org.id,
+        f"user:{actor.email}" if actor else "keel apply",
+        "team.created",
+        slug,
+        f"level={level}",
+        team.id,
+    )
     s.flush()
     return team
 
@@ -149,12 +210,22 @@ def get_team(slug: str, s: deps.Session, u: deps.User) -> dict:
     """Team home: summary, today's brief and activity."""
     team = deps.team_or_404(s, u, slug)
     idx = serial.TeamIndex(s, u.org_id)
-    today = s.scalar(sa.select(models.Brief).where(models.Brief.team_id == team.id)
-                     .order_by(models.Brief.created_at.desc()))
-    acts = s.scalars(sa.select(models.Activity).where(models.Activity.team_id == team.id)
-                     .order_by(models.Activity.id.desc()).limit(OVERVIEW_ACTIVITY))
-    return {**serial.team_summary(s, team), "today": serial.brief(today, idx) if today else None,
-            "activity": [serial.activity(a, idx) for a in acts]}
+    today = s.scalar(
+        sa.select(models.Brief)
+        .where(models.Brief.team_id == team.id)
+        .order_by(models.Brief.created_at.desc())
+    )
+    acts = s.scalars(
+        sa.select(models.Activity)
+        .where(models.Activity.team_id == team.id)
+        .order_by(models.Activity.id.desc())
+        .limit(OVERVIEW_ACTIVITY)
+    )
+    return {
+        **serial.team_summary(s, team),
+        "today": serial.brief(today, idx) if today else None,
+        "activity": [serial.activity(a, idx) for a in acts],
+    }
 
 
 class StewardPatch(pydantic.BaseModel):
@@ -172,8 +243,15 @@ def patch_steward(slug: str, body: StewardPatch, s: deps.Session, u: deps.User) 
     st = gateway.steward_for(s, team.id)
     if body.paused is not None and body.paused != st.paused:
         st.paused = body.paused
-        feed.activity(s, u.org_id, team.id, "level", "⏸️" if st.paused else "▶️",
-                      f"{u.name} {'paused' if st.paused else 'resumed'} {st.name}", f"/teams/{slug}")
+        feed.activity(
+            s,
+            u.org_id,
+            team.id,
+            "level",
+            "⏸️" if st.paused else "▶️",
+            f"{u.name} {'paused' if st.paused else 'resumed'} {st.name}",
+            f"/teams/{slug}",
+        )
     if body.name:
         st.name = body.name.strip()[:60]
     if body.emoji:
@@ -183,9 +261,23 @@ def patch_steward(slug: str, body: StewardPatch, s: deps.Session, u: deps.User) 
         if bad:
             raise ValueError(f"Unknown duties: {', '.join(sorted(bad))}.")
         st.duties = body.duties
-    feed.audit(s, u.org_id, f"user:{u.email}", "steward.updated", slug, body.model_dump_json(exclude_none=True), team.id)
-    pending = s.scalar(sa.select(sa.func.count()).select_from(models.Approval).where(
-        models.Approval.team_id == team.id, models.Approval.status == "pending")) or 0
+    feed.audit(
+        s,
+        u.org_id,
+        f"user:{u.email}",
+        "steward.updated",
+        slug,
+        body.model_dump_json(exclude_none=True),
+        team.id,
+    )
+    pending = (
+        s.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.Approval)
+            .where(models.Approval.team_id == team.id, models.Approval.status == "pending")
+        )
+        or 0
+    )
     return serial.steward(st, team, pending)
 
 
@@ -213,14 +305,18 @@ def post_level(slug: str, body: LevelChange, s: deps.Session, u: deps.User) -> d
 
 # ---------------------------------------------------------------- commitments
 
+
 @router.get("/commitments")
-def list_commitments(s: deps.Session, u: deps.User, team: str | None = None, status: str | None = None,
-                     risk: str | None = None) -> list[dict]:
+def list_commitments(
+    s: deps.Session, u: deps.User, team: str | None = None, status: str | None = None, risk: str | None = None
+) -> list[dict]:
     """Ledger rows, filtered by team, status (or 'open'/'closed') and risk."""
     q = sa.select(models.Commitment).where(models.Commitment.org_id == u.org_id)
     if team:
         t = deps.team_or_404(s, u, team)
-        q = q.where(sa.or_(models.Commitment.owner_team_id == t.id, models.Commitment.requester_team_id == t.id))
+        q = q.where(
+            sa.or_(models.Commitment.owner_team_id == t.id, models.Commitment.requester_team_id == t.id)
+        )
     if status == "open":
         q = q.where(models.Commitment.status.in_(ledger.OPEN_STATUSES))
     elif status == "closed":
@@ -248,10 +344,21 @@ def post_commitment(body: NewCommitment, s: deps.Session, u: deps.User) -> dict:
     """Log a commitment by hand."""
     team = deps.team_or_404(s, u, body.team)
     req = deps.team_or_404(s, u, body.requester_team) if body.requester_team else None
-    c = ledger.create(s, team=team, title=body.title, detail=body.detail, due_at=_parse_due(body.due_at, team),
-                      owner_person=body.owner_person, requester_team=req, requester_person=u.name if req else None,
-                      priority=body.priority, status="accepted", source_kind="web", actor=u.name,
-                      steward_name=u.name)
+    c = ledger.create(
+        s,
+        team=team,
+        title=body.title,
+        detail=body.detail,
+        due_at=_parse_due(body.due_at, team),
+        owner_person=body.owner_person,
+        requester_team=req,
+        requester_person=u.name if req else None,
+        priority=body.priority,
+        status="accepted",
+        source_kind="web",
+        actor=u.name,
+        steward_name=u.name,
+    )
     feed.audit(s, u.org_id, f"user:{u.email}", "commitment.created", c.key, c.title, team.id)
     return serial.commitment(c, serial.TeamIndex(s, u.org_id))
 
@@ -284,10 +391,26 @@ def patch_commitment(key: str, body: CommitmentPatch, s: deps.Session, u: deps.U
     team = s.get(models.Team, c.owner_team_id)
     fields = body.model_dump(exclude_unset=True)
     clear_due = "due_at" in fields and not body.due_at
-    ledger.update(s, c, u.name, status=body.status, due_at=_parse_due(body.due_at, team) if body.due_at else None,
-                  owner_person=body.owner_person, priority=body.priority, note=body.note, clear_due=clear_due)
-    feed.audit(s, u.org_id, f"user:{u.email}", "commitment.updated", c.key, body.model_dump_json(exclude_none=True),
-               c.owner_team_id)
+    ledger.update(
+        s,
+        c,
+        u.name,
+        status=body.status,
+        due_at=_parse_due(body.due_at, team) if body.due_at else None,
+        owner_person=body.owner_person,
+        priority=body.priority,
+        note=body.note,
+        clear_due=clear_due,
+    )
+    feed.audit(
+        s,
+        u.org_id,
+        f"user:{u.email}",
+        "commitment.updated",
+        c.key,
+        body.model_dump_json(exclude_none=True),
+        c.owner_team_id,
+    )
     s.flush()
     s.refresh(c)
     return serial.commitment_detail(s, c, serial.TeamIndex(s, u.org_id))
@@ -295,8 +418,11 @@ def patch_commitment(key: str, body: CommitmentPatch, s: deps.Session, u: deps.U
 
 # ---------------------------------------------------------------- approvals and operations
 
+
 @router.get("/approvals")
-def list_approvals(s: deps.Session, u: deps.User, team: str | None = None, status: str | None = "pending") -> list[dict]:
+def list_approvals(
+    s: deps.Session, u: deps.User, team: str | None = None, status: str | None = "pending"
+) -> list[dict]:
     """Drafts waiting for a person (or decided ones with status=approved|rejected|all)."""
     q = sa.select(models.Approval).where(models.Approval.org_id == u.org_id)
     if team:
@@ -304,7 +430,10 @@ def list_approvals(s: deps.Session, u: deps.User, team: str | None = None, statu
     if status and status != "all":
         q = q.where(models.Approval.status == status)
     idx = serial.TeamIndex(s, u.org_id)
-    return [serial.approval(s, a, idx) for a in s.scalars(q.order_by(models.Approval.created_at.desc()).limit(LIST_LIMIT))]
+    return [
+        serial.approval(s, a, idx)
+        for a in s.scalars(q.order_by(models.Approval.created_at.desc()).limit(LIST_LIMIT))
+    ]
 
 
 def _approval_or_404(s: sa.orm.Session, u: models.User, approval_id: str) -> models.Approval:
@@ -338,7 +467,9 @@ def reject(approval_id: str, s: deps.Session, u: deps.User, body: RejectBody | N
 
 
 @router.get("/operations")
-def list_operations(s: deps.Session, u: deps.User, team: str | None = None, status: str | None = None) -> list[dict]:
+def list_operations(
+    s: deps.Session, u: deps.User, team: str | None = None, status: str | None = None
+) -> list[dict]:
     """Outgoing writes and their delivery state."""
     q = sa.select(models.Operation).where(models.Operation.org_id == u.org_id)
     if team:
@@ -346,7 +477,10 @@ def list_operations(s: deps.Session, u: deps.User, team: str | None = None, stat
     if status:
         q = q.where(models.Operation.status.in_(status.split(",")))
     idx = serial.TeamIndex(s, u.org_id)
-    return [serial.operation(op, idx) for op in s.scalars(q.order_by(models.Operation.created_at.desc()).limit(LIST_LIMIT))]
+    return [
+        serial.operation(op, idx)
+        for op in s.scalars(q.order_by(models.Operation.created_at.desc()).limit(LIST_LIMIT))
+    ]
 
 
 class ResolveBody(pydantic.BaseModel):
@@ -366,13 +500,17 @@ def resolve(op_id: str, body: ResolveBody, s: deps.Session, u: deps.User) -> dic
 
 # ---------------------------------------------------------------- knowledge, services, briefs, chat
 
+
 @router.get("/teams/{slug}/knowledge")
 def list_knowledge(slug: str, s: deps.Session, u: deps.User) -> list[dict]:
     """Team docs, hiding ones above the person's clearance."""
     team = deps.team_or_404(s, u, slug)
     clearance = steward.clearance_for(s, u, team)
-    rows = s.scalars(sa.select(models.KnowledgeDoc).where(models.KnowledgeDoc.team_id == team.id)
-                     .order_by(models.KnowledgeDoc.updated_at.desc()))
+    rows = s.scalars(
+        sa.select(models.KnowledgeDoc)
+        .where(models.KnowledgeDoc.team_id == team.id)
+        .order_by(models.KnowledgeDoc.updated_at.desc())
+    )
     return [serial.knowledge_doc(d) for d in rows if labels.audience_allows(clearance, d.label)]
 
 
@@ -388,8 +526,9 @@ def post_knowledge(slug: str, body: NewDoc, s: deps.Session, u: deps.User) -> di
     """Add a doc to the team's knowledge."""
     team = deps.team_or_404(s, u, slug)
     deps.require_team_member(s, u, team.id, "add knowledge")
-    return serial.knowledge_doc(knowledge.add(s, team, body.title, body.content, body.label, body.source,
-                                              actor=f"user:{u.email}"))
+    return serial.knowledge_doc(
+        knowledge.add(s, team, body.title, body.content, body.label, body.source, actor=f"user:{u.email}")
+    )
 
 
 class Ask(pydantic.BaseModel):
@@ -407,15 +546,21 @@ def ask(slug: str, body: Ask, s: deps.Session, u: deps.User) -> dict:
     found = knowledge.search(s, [team.id], body.question, steward.clearance_for(s, u, team))
     st = gateway.steward_for(s, team.id)
     text = brain.answer(llm.for_org(s, u.org_id), body.question, found, steward=st.name, team=team.name)
-    return {"answer": text, "label": found.label, "withheld": found.withheld,
-            "sources": [{"title": p.title, "source": p.source, "label": p.label} for p in found.passages]}
+    return {
+        "answer": text,
+        "label": found.label,
+        "withheld": found.withheld,
+        "sources": [{"title": p.title, "source": p.source, "label": p.label} for p in found.passages],
+    }
 
 
 @router.get("/teams/{slug}/services")
 def list_services(slug: str, s: deps.Session, u: deps.User) -> list[dict]:
     """Services the team's steward watches."""
     team = deps.team_or_404(s, u, slug)
-    rows = s.scalars(sa.select(models.Service).where(models.Service.team_id == team.id).order_by(models.Service.name))
+    rows = s.scalars(
+        sa.select(models.Service).where(models.Service.team_id == team.id).order_by(models.Service.name)
+    )
     return [serial.service(s, svc) for svc in rows]
 
 
@@ -451,8 +596,12 @@ def list_briefs(slug: str, s: deps.Session, u: deps.User) -> list[dict]:
     """Briefs, newest first."""
     team = deps.team_or_404(s, u, slug)
     idx = serial.TeamIndex(s, u.org_id)
-    rows = s.scalars(sa.select(models.Brief).where(models.Brief.team_id == team.id)
-                     .order_by(models.Brief.created_at.desc()).limit(60))
+    rows = s.scalars(
+        sa.select(models.Brief)
+        .where(models.Brief.team_id == team.id)
+        .order_by(models.Brief.created_at.desc())
+        .limit(60)
+    )
     return [serial.brief(b, idx) for b in rows]
 
 
@@ -472,8 +621,14 @@ def post_brief(slug: str, body: BriefBody, s: deps.Session, u: deps.User) -> dic
 def get_chat(slug: str, s: deps.Session, u: deps.User) -> list[dict]:
     """Front-desk history."""
     team = deps.team_or_404(s, u, slug)
-    rows = list(s.scalars(sa.select(models.ChatMessage).where(models.ChatMessage.team_id == team.id)
-                          .order_by(models.ChatMessage.at.desc()).limit(CHAT_LIMIT)))[::-1]
+    rows = list(
+        s.scalars(
+            sa.select(models.ChatMessage)
+            .where(models.ChatMessage.team_id == team.id)
+            .order_by(models.ChatMessage.at.desc())
+            .limit(CHAT_LIMIT)
+        )
+    )[::-1]
     return [serial.chat_message(m) for m in rows]
 
 
@@ -489,6 +644,7 @@ def post_chat(slug: str, body: ChatBody, s: deps.Session, u: deps.User) -> list[
 
 
 # ---------------------------------------------------------------- audit, checkups, demo
+
 
 @router.get("/audit")
 def list_audit(s: deps.Session, u: deps.User, team: str | None = None) -> list[dict]:
@@ -519,8 +675,12 @@ def post_checkup(body: CheckupBody, s: deps.Session, u: deps.User) -> dict:
 @router.get("/checkups")
 def list_checkups(s: deps.Session, u: deps.User) -> list[dict]:
     """Past checkups."""
-    rows = s.scalars(sa.select(models.Checkup).where(models.Checkup.org_id == u.org_id)
-                     .order_by(models.Checkup.created_at.desc()).limit(50))
+    rows = s.scalars(
+        sa.select(models.Checkup)
+        .where(models.Checkup.org_id == u.org_id)
+        .order_by(models.Checkup.created_at.desc())
+        .limit(50)
+    )
     return [serial.checkup(c) for c in rows]
 
 
@@ -547,8 +707,13 @@ def demo_tick(u: deps.User) -> dict:
     worker.drain()
     with db.session() as s:
         idx = serial.TeamIndex(s, u.org_id)
-        latest = s.scalar(sa.select(models.Activity).where(models.Activity.org_id == u.org_id,
-                                                           models.Activity.id > before)
-                          .order_by(models.Activity.id.desc()))
-        return {"event": serial.activity(latest, idx) if latest else None, "title": title,
-                "remaining": len(demo.STEPS) - int(s.get(models.Org, u.org_id).settings.get("demo_step", 0))}
+        latest = s.scalar(
+            sa.select(models.Activity)
+            .where(models.Activity.org_id == u.org_id, models.Activity.id > before)
+            .order_by(models.Activity.id.desc())
+        )
+        return {
+            "event": serial.activity(latest, idx) if latest else None,
+            "title": title,
+            "remaining": len(demo.STEPS) - int(s.get(models.Org, u.org_id).settings.get("demo_step", 0)),
+        }

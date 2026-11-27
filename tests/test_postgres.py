@@ -12,8 +12,10 @@ import pytest
 
 from keel import db, jobs, models
 
-pytestmark = [pytest.mark.postgres,
-              pytest.mark.skipif(not os.environ.get("KEEL_TEST_DATABASE_URL"), reason="needs KEEL_TEST_DATABASE_URL")]
+pytestmark = [
+    pytest.mark.postgres,
+    pytest.mark.skipif(not os.environ.get("KEEL_TEST_DATABASE_URL"), reason="needs KEEL_TEST_DATABASE_URL"),
+]
 
 JOB_COUNT = 200
 WORKERS = 8

@@ -15,9 +15,21 @@ from keel.connectors import github, slack
 
 router = fastapi.APIRouter(prefix="/api/setup")
 STEPS = ("admin", "model", "slack", "github", "policy", "team")
-SLACK_BOT_SCOPES = ("app_mentions:read", "channels:history", "channels:read", "chat:write", "chat:write.customize",
-                    "commands", "groups:history", "groups:read", "im:history", "im:write", "metadata.message:read",
-                    "users:read", "users:read.email")
+SLACK_BOT_SCOPES = (
+    "app_mentions:read",
+    "channels:history",
+    "channels:read",
+    "chat:write",
+    "chat:write.customize",
+    "commands",
+    "groups:history",
+    "groups:read",
+    "im:history",
+    "im:write",
+    "metadata.message:read",
+    "users:read",
+    "users:read.email",
+)
 
 
 def org_of(s: orm.Session) -> models.Org | None:
@@ -27,7 +39,10 @@ def org_of(s: orm.Session) -> models.Org | None:
 
 def has_admin(s: orm.Session) -> bool:
     """True once an org admin exists."""
-    return s.scalar(sa.select(sa.func.count()).select_from(models.User).where(models.User.role == "org_admin")) > 0
+    return (
+        s.scalar(sa.select(sa.func.count()).select_from(models.User).where(models.User.role == "org_admin"))
+        > 0
+    )
 
 
 def setup_complete(s: orm.Session) -> bool:
@@ -67,32 +82,78 @@ def get_setup(s: deps.Session, _u: Guard) -> dict:
         res = connections.resolve(s, oid, kind)
         if not res.configured:
             return False, ""
-        row = s.scalar(sa.select(models.Connection).where(models.Connection.org_id == oid, models.Connection.kind == kind))
+        row = s.scalar(
+            sa.select(models.Connection).where(
+                models.Connection.org_id == oid, models.Connection.kind == kind
+            )
+        )
         if row is not None and row.status == "error":
             return False, row.status_line
+        provider = res.config.get("provider", "")
+        if kind == "model" and provider not in llm.PROVIDERS:
+            return False, f"Unknown model provider “{provider}”. Use one of: {', '.join(llm.PROVIDERS)}."
         how = "from environment" if res.source == "env" else "saved"
         return True, f"Connected ({how})."
 
     model_ok, model_line = conn("model")
     slack_ok, slack_line = conn("slack")
     gh_ok, gh_line = conn("github")
-    n_teams = s.scalar(sa.select(sa.func.count()).select_from(models.Team).where(models.Team.org_id == oid)) or 0
+    n_teams = (
+        s.scalar(sa.select(sa.func.count()).select_from(models.Team).where(models.Team.org_id == oid)) or 0
+    )
     policy_set = bool(org and "default_level" in org.settings)
     steps = [
-        {"id": "admin", "title": "Create the admin account", "done": has_admin(s), "optional": False,
-         "detail": f"{org.name}" if org and has_admin(s) else "The first person in runs setup and approves levels."},
-        {"id": "model", "title": "Choose a model", "done": model_ok, "optional": True,
-         "detail": model_line or "Optional. Without one, stewards use built-in rules."},
-        {"id": "slack", "title": "Connect Slack", "done": slack_ok, "optional": True,
-         "detail": slack_line or "Socket Mode: no public URL needed."},
-        {"id": "github", "title": "Connect GitHub", "done": gh_ok, "optional": True,
-         "detail": gh_line or "A token or a GitHub App, for issues and checkups."},
-        {"id": "policy", "title": "Set the starting level", "done": policy_set, "optional": True,
-         "detail": (f"New stewards start at L{org.settings['default_level']} "
-                    f"{levels.level_def(int(org.settings['default_level'])).name}.") if policy_set
-         else "Stewards start at L1 Draft: they draft, people approve."},
-        {"id": "team", "title": "Add your first team", "done": n_teams > 0, "optional": False,
-         "detail": f"{n_teams} team{'s' if n_teams != 1 else ''}." if n_teams else "One team, one steward."},
+        {
+            "id": "admin",
+            "title": "Create the admin account",
+            "done": has_admin(s),
+            "optional": False,
+            "detail": f"{org.name}"
+            if org and has_admin(s)
+            else "The first person in runs setup and approves levels.",
+        },
+        {
+            "id": "model",
+            "title": "Choose a model",
+            "done": model_ok,
+            "optional": True,
+            "detail": model_line or "Optional. Without one, stewards use built-in rules.",
+        },
+        {
+            "id": "slack",
+            "title": "Connect Slack",
+            "done": slack_ok,
+            "optional": True,
+            "detail": slack_line or "Socket Mode: no public URL needed.",
+        },
+        {
+            "id": "github",
+            "title": "Connect GitHub",
+            "done": gh_ok,
+            "optional": True,
+            "detail": gh_line or "A token or a GitHub App, for issues and checkups.",
+        },
+        {
+            "id": "policy",
+            "title": "Set the starting level",
+            "done": policy_set,
+            "optional": True,
+            "detail": (
+                f"New stewards start at L{org.settings['default_level']} "
+                f"{levels.level_def(int(org.settings['default_level'])).name}."
+            )
+            if policy_set
+            else "Stewards start at L1 Draft: they draft, people approve.",
+        },
+        {
+            "id": "team",
+            "title": "Add your first team",
+            "done": n_teams > 0,
+            "optional": False,
+            "detail": f"{n_teams} team{'s' if n_teams != 1 else ''}."
+            if n_teams
+            else "One team, one steward.",
+        },
     ]
     return {"steps": steps, "slack_manifest_url": "/api/setup/slack-manifest"}
 
@@ -140,10 +201,13 @@ def _check_admin(b: AdminBody) -> None:
 
 def _gh_auth(b: GitHubBody, s: orm.Session, org: models.Org | None) -> github.GitHubAuth:
     old = connections.resolve(s, org.id, "github").secrets if org else {}
-    return github.GitHubAuth(token=b.token or ("" if b.app_id else old.get("token", "")), app_id=b.app_id,
-                             private_key=b.private_key or old.get("private_key", ""),
-                             installation_id=b.installation_id,
-                             api_url=b.api_url or config.get().github_api_url)
+    return github.GitHubAuth(
+        token=b.token or ("" if b.app_id else old.get("token", "")),
+        app_id=b.app_id,
+        private_key=b.private_key or old.get("private_key", ""),
+        installation_id=b.installation_id,
+        api_url=b.api_url or config.get().github_api_url,
+    )
 
 
 def _test(step: str, body: dict, s: orm.Session) -> tuple[bool, str]:
@@ -197,8 +261,9 @@ def _one_line(exc: Exception) -> str:
 
 
 @router.post("/{step}")
-def save_step(step: str, body: dict, request: fastapi.Request, response: fastapi.Response, s: deps.Session,
-              u: Guard) -> dict:
+def save_step(
+    step: str, body: dict, request: fastapi.Request, response: fastapi.Response, s: deps.Session, u: Guard
+) -> dict:
     """Save a step. Connection steps are tested first and only saved when the test passes."""
     if step == "admin":
         if has_admin(s):
@@ -209,13 +274,24 @@ def save_step(step: str, body: dict, request: fastapi.Request, response: fastapi
         org.name = b.org_name.strip()
         s.add(org)
         s.flush()
-        admin = models.User(org_id=org.id, email=b.email.strip().lower(), name=b.name.strip(), role="org_admin",
-                            password_hash=auth_utils.hash_password(b.password))
+        admin = models.User(
+            org_id=org.id,
+            email=b.email.strip().lower(),
+            name=b.name.strip(),
+            role="org_admin",
+            password_hash=auth_utils.hash_password(b.password),
+        )
         s.add(admin)
         s.flush()
         feed.audit(s, org.id, f"user:{admin.email}", "setup.admin", admin.email)
-        response.set_cookie(deps.COOKIE, auth_utils.sign_session(admin.id), httponly=True, samesite="lax",
-                            secure=request.url.scheme == "https", max_age=auth_utils.SESSION_MAX_AGE_S)
+        response.set_cookie(
+            deps.COOKIE,
+            auth_utils.sign_session(admin.id),
+            httponly=True,
+            samesite="lax",
+            secure=request.url.scheme == "https",
+            max_age=auth_utils.SESSION_MAX_AGE_S,
+        )
         return {"ok": True, "message": f"Welcome, {admin.name}. You're the admin of {org.name}."}
     org = _need_org(s)
     actor = f"user:{u.email}" if u else "setup"
@@ -225,18 +301,35 @@ def save_step(step: str, body: dict, request: fastapi.Request, response: fastapi
             return {"ok": False, "message": line}
         if step == "model":
             b = ModelBody(**body)
-            connections.store(s, org.id, "model", {"provider": b.provider, "model": b.model, "base_url": b.base_url},
-                              {"api_key": b.api_key})
+            connections.store(
+                s,
+                org.id,
+                "model",
+                {"provider": b.provider, "model": b.model, "base_url": b.base_url},
+                {"api_key": b.api_key},
+            )
         elif step == "slack":
             b = SlackBody(**body)
-            connections.store(s, org.id, "slack", {}, {"bot_token": b.bot_token, "app_token": b.app_token,
-                                                       "signing_secret": b.signing_secret})
+            connections.store(
+                s,
+                org.id,
+                "slack",
+                {},
+                {"bot_token": b.bot_token, "app_token": b.app_token, "signing_secret": b.signing_secret},
+            )
         else:
             b = GitHubBody(**body)
-            connections.store(s, org.id, "github",
-                              {"app_id": b.app_id, "installation_id": b.installation_id,
-                               "api_url": b.api_url or config.get().github_api_url},
-                              {"token": b.token, "private_key": b.private_key})
+            connections.store(
+                s,
+                org.id,
+                "github",
+                {
+                    "app_id": b.app_id,
+                    "installation_id": b.installation_id,
+                    "api_url": b.api_url or config.get().github_api_url,
+                },
+                {"token": b.token, "private_key": b.private_key},
+            )
         feed.audit(s, org.id, actor, f"setup.{step}", step, line)
         return {"ok": True, "message": line}
     if step == "policy":
@@ -245,9 +338,14 @@ def save_step(step: str, body: dict, request: fastapi.Request, response: fastapi
         labels.rank(b.label_default)
         org.settings = {**org.settings, "default_level": b.default_level, "label_default": b.label_default}
         feed.audit(s, org.id, actor, "setup.policy", "org", f"default_level={b.default_level}")
-        return {"ok": True, "message": f"New stewards start at L{b.default_level} {levels.level_def(b.default_level).name}."}
+        return {
+            "ok": True,
+            "message": f"New stewards start at L{b.default_level} {levels.level_def(b.default_level).name}.",
+        }
     if step == "team":
-        admin = u or s.scalar(sa.select(models.User).where(models.User.org_id == org.id, models.User.role == "org_admin"))
+        admin = u or s.scalar(
+            sa.select(models.User).where(models.User.org_id == org.id, models.User.role == "org_admin")
+        )
         team = routes.create_team(s, org, routes.NewTeam(**body), admin)
         st = s.scalar(sa.select(models.Steward).where(models.Steward.team_id == team.id))
         return {"ok": True, "message": f"{team.name} has a steward now: {st.emoji} {st.name}."}
@@ -297,5 +395,8 @@ settings:
 @router.get("/slack-manifest")
 def get_manifest() -> fastapi.Response:
     """Download the Slack app manifest."""
-    return fastapi.Response(slack_manifest(config.get().base_url), media_type="application/x-yaml",
-                            headers={"Content-Disposition": 'attachment; filename="keel-slack-manifest.yaml"'})
+    return fastapi.Response(
+        slack_manifest(config.get().base_url),
+        media_type="application/x-yaml",
+        headers={"Content-Disposition": 'attachment; filename="keel-slack-manifest.yaml"'},
+    )

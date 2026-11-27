@@ -54,8 +54,13 @@ def _age_days(ts: str, now: dt.datetime) -> float:
     return (now - dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))).total_seconds() / 86400
 
 
-def analyze(repo: str, token: str = "", api_url: str = "https://api.github.com",
-            client: httpx.Client | None = None, now: dt.datetime | None = None) -> tuple[list[Finding], dict[str, typing.Any]]:
+def analyze(
+    repo: str,
+    token: str = "",
+    api_url: str = "https://api.github.com",
+    client: httpx.Client | None = None,
+    now: dt.datetime | None = None,
+) -> tuple[list[Finding], dict[str, typing.Any]]:
     """Inspect ``owner/name`` and return findings plus stats. Raises CheckupError with a plain reason."""
     if repo.count("/") != 1 or not all(repo.split("/")):
         raise CheckupError("Use the form owner/name, like vercel/next.js.")
@@ -73,9 +78,13 @@ def analyze(repo: str, token: str = "", api_url: str = "https://api.github.com",
         if r.status_code == 404:
             return None
         if r.status_code == 403 and r.headers.get("x-ratelimit-remaining") == "0":
-            raise CheckupError("GitHub's rate limit is used up. Add a token in Setup or try again within the hour.")
+            raise CheckupError(
+                "GitHub's rate limit is used up. Add a token in Setup or try again within the hour."
+            )
         if r.status_code in (401, 403):
-            raise CheckupError(f"GitHub refused access ({r.status_code}). The token may lack access to this repo.")
+            raise CheckupError(
+                f"GitHub refused access ({r.status_code}). The token may lack access to this repo."
+            )
         if r.status_code >= 400:
             raise CheckupError(f"GitHub answered {r.status_code}.")
         return r.json()
@@ -91,9 +100,14 @@ def analyze(repo: str, token: str = "", api_url: str = "https://api.github.com",
     stale = [p for p in open_prs if _age_days(p["updated_at"], now) > STALE_PR_DAYS and not p.get("draft")]
     if stale:
         oldest = max(stale, key=lambda p: _age_days(p["updated_at"], now))
-        findings.append(Finding("medium" if len(stale) < 5 else "high", f"{len(stale)} stale pull request{'s' * (len(stale) != 1)}",
-                                f"No activity for over {STALE_PR_DAYS} days. Oldest: #{oldest['number']} “{oldest['title'][:70]}”.",
-                                oldest["html_url"]))
+        findings.append(
+            Finding(
+                "medium" if len(stale) < 5 else "high",
+                f"{len(stale)} stale pull request{'s' * (len(stale) != 1)}",
+                f"No activity for over {STALE_PR_DAYS} days. Oldest: #{oldest['number']} “{oldest['title'][:70]}”.",
+                oldest["html_url"],
+            )
+        )
     waiting = []
     for p in [p for p in open_prs if not p.get("draft")][:MAX_PR_REVIEW_LOOKUPS]:
         if _age_days(p["created_at"], now) <= REVIEW_WAIT_DAYS:
@@ -102,24 +116,49 @@ def analyze(repo: str, token: str = "", api_url: str = "https://api.github.com",
         if not reviews:
             waiting.append(p)
     if waiting:
-        findings.append(Finding("medium", f"{len(waiting)} PR{'s' * (len(waiting) != 1)} waiting for a first review",
-                                f"Open more than {REVIEW_WAIT_DAYS} days with no review, e.g. #{waiting[0]['number']}.",
-                                waiting[0]["html_url"]))
+        findings.append(
+            Finding(
+                "medium",
+                f"{len(waiting)} PR{'s' * (len(waiting) != 1)} waiting for a first review",
+                f"Open more than {REVIEW_WAIT_DAYS} days with no review, e.g. #{waiting[0]['number']}.",
+                waiting[0]["html_url"],
+            )
+        )
 
-    closed = get(f"/repos/{repo}/pulls", state="closed", per_page=SAMPLE_PRS, sort="updated", direction="desc") or []
+    closed = (
+        get(f"/repos/{repo}/pulls", state="closed", per_page=SAMPLE_PRS, sort="updated", direction="desc")
+        or []
+    )
     merged = [p for p in closed if p.get("merged_at")]
     merge_hours = [(_age_days(p["created_at"], now) - _age_days(p["merged_at"], now)) * 24 for p in merged]
     median_merge_h = round(statistics.median(merge_hours), 1) if merge_hours else None
     if median_merge_h is not None and median_merge_h > 72:
-        findings.append(Finding("medium", "Slow merges", f"Median time from open to merge is {median_merge_h / 24:.1f} days "
-                                f"over the last {len(merged)} merged PRs."))
+        findings.append(
+            Finding(
+                "medium",
+                "Slow merges",
+                f"Median time from open to merge is {median_merge_h / 24:.1f} days "
+                f"over the last {len(merged)} merged PRs.",
+            )
+        )
 
-    issues = [i for i in (get(f"/repos/{repo}/issues", state="open", per_page=100) or []) if "pull_request" not in i]
-    unowned = [i for i in issues if not i.get("assignees") and _age_days(i["created_at"], now) > OLD_UNOWNED_ISSUE_DAYS]
+    issues = [
+        i for i in (get(f"/repos/{repo}/issues", state="open", per_page=100) or []) if "pull_request" not in i
+    ]
+    unowned = [
+        i
+        for i in issues
+        if not i.get("assignees") and _age_days(i["created_at"], now) > OLD_UNOWNED_ISSUE_DAYS
+    ]
     if unowned:
-        findings.append(Finding("low" if len(unowned) < 10 else "medium",
-                                f"{len(unowned)} old issue{'s' * (len(unowned) != 1)} with no owner",
-                                f"Open over {OLD_UNOWNED_ISSUE_DAYS} days with nobody assigned.", f"{web}/issues?q=is%3Aopen+no%3Aassignee"))
+        findings.append(
+            Finding(
+                "low" if len(unowned) < 10 else "medium",
+                f"{len(unowned)} old issue{'s' * (len(unowned) != 1)} with no owner",
+                f"Open over {OLD_UNOWNED_ISSUE_DAYS} days with nobody assigned.",
+                f"{web}/issues?q=is%3Aopen+no%3Aassignee",
+            )
+        )
 
     ci_state = "unknown"
     runs = get(f"/repos/{repo}/commits/{branch}/check-runs", per_page=50)
@@ -127,28 +166,57 @@ def analyze(repo: str, token: str = "", api_url: str = "https://api.github.com",
         conclusions = {r.get("conclusion") for r in runs["check_runs"]}
         ci_state = "failing" if conclusions & {"failure", "timed_out", "cancelled"} else "passing"
         if ci_state == "failing":
-            findings.append(Finding("high", f"CI is failing on {branch}",
-                                    "The latest commit on the default branch has failing checks.", f"{web}/commits/{branch}"))
+            findings.append(
+                Finding(
+                    "high",
+                    f"CI is failing on {branch}",
+                    "The latest commit on the default branch has failing checks.",
+                    f"{web}/commits/{branch}",
+                )
+            )
     elif runs is not None:
-        findings.append(Finding("low", "No CI checks on the default branch",
-                                "Nothing reported checks for the latest commit."))
+        findings.append(
+            Finding(
+                "low", "No CI checks on the default branch", "Nothing reported checks for the latest commit."
+            )
+        )
 
     has_owners = any(get(f"/repos/{repo}/contents/{path}") is not None for path in OWNERS_PATHS)
     if not has_owners:
-        findings.append(Finding("low", "No CODEOWNERS file", "Reviews aren't routed to owners automatically.",
-                                "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners"))
+        findings.append(
+            Finding(
+                "low",
+                "No CODEOWNERS file",
+                "Reviews aren't routed to owners automatically.",
+                "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners",
+            )
+        )
     community = get(f"/repos/{repo}/community/profile") or {}
     files = community.get("files") or {}
     if not files.get("contributing"):
-        findings.append(Finding("low", "No CONTRIBUTING guide", "New contributors have to guess the workflow."))
-    if get(f"/repos/{repo}/contents/SECURITY.md") is None and get(f"/repos/{repo}/contents/.github/SECURITY.md") is None:
-        findings.append(Finding("low", "No security policy", "There's no SECURITY.md telling people how to report issues."))
+        findings.append(
+            Finding("low", "No CONTRIBUTING guide", "New contributors have to guess the workflow.")
+        )
+    if (
+        get(f"/repos/{repo}/contents/SECURITY.md") is None
+        and get(f"/repos/{repo}/contents/.github/SECURITY.md") is None
+    ):
+        findings.append(
+            Finding(
+                "low", "No security policy", "There's no SECURITY.md telling people how to report issues."
+            )
+        )
 
     stats = {
-        "open_prs": len(open_prs), "stale_prs": len(stale), "awaiting_review": len(waiting),
+        "open_prs": len(open_prs),
+        "stale_prs": len(stale),
+        "awaiting_review": len(waiting),
         "median_merge_hours": median_merge_h if median_merge_h is not None else "n/a",
-        "open_issues": len(issues), "unowned_old_issues": len(unowned), "ci": ci_state,
-        "default_branch": branch, "stars": meta.get("stargazers_count", 0),
+        "open_issues": len(issues),
+        "unowned_old_issues": len(unowned),
+        "ci": ci_state,
+        "default_branch": branch,
+        "stars": meta.get("stargazers_count", 0),
         "not_checked": "branch protection (needs admin access)",
     }
     findings.sort(key=lambda f: list(SEVERITY_COST).index(f.severity))
@@ -156,15 +224,33 @@ def analyze(repo: str, token: str = "", api_url: str = "https://api.github.com",
 
 
 DEMO_FINDINGS = [
-    Finding("high", "CI is failing on main", "The latest commit on the default branch has failing checks.", None),
-    Finding("medium", "6 stale pull requests", "No activity for over 14 days. Oldest: #412 “Retry webhooks with jitter”.", None),
-    Finding("medium", "3 PRs waiting for a first review", "Open more than 2 days with no review, e.g. #431.", None),
+    Finding(
+        "high", "CI is failing on main", "The latest commit on the default branch has failing checks.", None
+    ),
+    Finding(
+        "medium",
+        "6 stale pull requests",
+        "No activity for over 14 days. Oldest: #412 “Retry webhooks with jitter”.",
+        None,
+    ),
+    Finding(
+        "medium", "3 PRs waiting for a first review", "Open more than 2 days with no review, e.g. #431.", None
+    ),
     Finding("low", "11 old issues with no owner", "Open over 30 days with nobody assigned.", None),
     Finding("low", "No CODEOWNERS file", "Reviews aren't routed to owners automatically.", None),
 ]
-DEMO_STATS = {"open_prs": 14, "stale_prs": 6, "awaiting_review": 3, "median_merge_hours": 31.5, "open_issues": 57,
-              "unowned_old_issues": 11, "ci": "failing", "default_branch": "main", "stars": 0,
-              "not_checked": "branch protection (needs admin access)"}
+DEMO_STATS = {
+    "open_prs": 14,
+    "stale_prs": 6,
+    "awaiting_review": 3,
+    "median_merge_hours": 31.5,
+    "open_issues": 57,
+    "unowned_old_issues": 11,
+    "ci": "failing",
+    "default_branch": "main",
+    "stars": 0,
+    "not_checked": "branch protection (needs admin access)",
+}
 
 
 def run(session: orm.Session, checkup: models.Checkup) -> models.Checkup:
@@ -175,8 +261,11 @@ def run(session: orm.Session, checkup: models.Checkup) -> models.Checkup:
             findings, st = DEMO_FINDINGS, dict(DEMO_STATS)
         else:
             res = connections.resolve(session, checkup.org_id, "github")
-            findings, st = analyze(checkup.repo, token=res.secrets.get("token", ""),
-                                   api_url=res.config.get("api_url") or "https://api.github.com")
+            findings, st = analyze(
+                checkup.repo,
+                token=res.secrets.get("token", ""),
+                api_url=res.config.get("api_url") or "https://api.github.com",
+            )
     except CheckupError as exc:
         checkup.status, checkup.error_line = "failed", str(exc)
         return checkup
@@ -184,7 +273,13 @@ def run(session: orm.Session, checkup: models.Checkup) -> models.Checkup:
     checkup.grade = grade(checkup.score)
     checkup.findings = [dataclasses.asdict(f) for f in findings]
     checkup.stats, checkup.status = st, "done"
-    feed.activity(session, checkup.org_id, None, "brief", "🩻",
-                  f"Checkup of {checkup.repo}: {checkup.grade} ({checkup.score}/100), {len(findings)} findings",
-                  f"/checkup?id={checkup.id}")
+    feed.activity(
+        session,
+        checkup.org_id,
+        None,
+        "brief",
+        "🩻",
+        f"Checkup of {checkup.repo}: {checkup.grade} ({checkup.score}/100), {len(findings)} findings",
+        f"/checkup?id={checkup.id}",
+    )
     return checkup

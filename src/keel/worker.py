@@ -64,8 +64,13 @@ def _nudge(_p: dict) -> None:
 
 
 HANDLERS: dict[str, Handler] = {
-    "dispatch": _dispatch, "reconcile": _reconcile, "process_inbox": _inbox, "check_service": _check_service,
-    "brief": _brief, "checkup": _checkup, "nudge": _nudge,
+    "dispatch": _dispatch,
+    "reconcile": _reconcile,
+    "process_inbox": _inbox,
+    "check_service": _check_service,
+    "brief": _brief,
+    "checkup": _checkup,
+    "nudge": _nudge,
 }
 
 
@@ -108,17 +113,33 @@ def timers(now: dt.datetime | None = None, last_nudge: dict[str, dt.datetime] | 
     now = now or models.utcnow()
     gateway.recover_stale(now)
     with db.session() as s:
-        due = s.scalars(sa.select(models.Service).where(sa.or_(models.Service.next_check_at.is_(None),
-                                                               models.Service.next_check_at <= now)))
+        due = s.scalars(
+            sa.select(models.Service).where(
+                sa.or_(models.Service.next_check_at.is_(None), models.Service.next_check_at <= now)
+            )
+        )
         for svc in due:
-            jobs.enqueue(s, svc.org_id, "check_service", {"service": svc.id},
-                         dedupe_key=f"check:{svc.id}:{int(now.timestamp()) // services.MIN_INTERVAL_S}")
+            jobs.enqueue(
+                s,
+                svc.org_id,
+                "check_service",
+                {"service": svc.id},
+                dedupe_key=f"check:{svc.id}:{int(now.timestamp()) // services.MIN_INTERVAL_S}",
+            )
         for team_id, kind in rhythm.due_briefs(s, now):
             team = s.get(models.Team, team_id)
             if team is not None:
-                jobs.enqueue(s, team.org_id, "brief", {"team": team_id, "kind": kind},
-                             dedupe_key=f"brief:{team_id}:{kind}:{now:%Y-%m-%d}")
-        if last_nudge is not None and now - last_nudge.get("at", dt.datetime.min.replace(tzinfo=dt.UTC)) >= NUDGE_INTERVAL:
+                jobs.enqueue(
+                    s,
+                    team.org_id,
+                    "brief",
+                    {"team": team_id, "kind": kind},
+                    dedupe_key=f"brief:{team_id}:{kind}:{now:%Y-%m-%d}",
+                )
+        if (
+            last_nudge is not None
+            and now - last_nudge.get("at", dt.datetime.min.replace(tzinfo=dt.UTC)) >= NUDGE_INTERVAL
+        ):
             org = s.scalar(sa.select(models.Org))
             if org is not None:
                 jobs.enqueue(s, org.id, "nudge", {}, dedupe_key=f"nudge:{now:%Y-%m-%dT%H}")

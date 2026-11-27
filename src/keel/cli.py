@@ -23,19 +23,24 @@ import rich.panel
 import rich.table
 import typer
 
-app = typer.Typer(help="Keel: one AI steward per team.", no_args_is_help=True, add_completion=False,
-                  rich_markup_mode="rich")
+app = typer.Typer(
+    help="Keel: one AI steward per team.", no_args_is_help=True, add_completion=False, rich_markup_mode="rich"
+)
 console = rich.console.Console()
 SEVERITY_STYLE = {"high": "bold red", "medium": "yellow", "low": "cyan"}
 GRADE_STYLE = {"A": "bold green", "B": "green", "C": "yellow", "D": "dark_orange", "F": "bold red"}
-RUNNER_POLL_S = 5.0  # Idle wait between polls; a runbook is never so urgent that 5 s matters, and it keeps load low.
+RUNNER_POLL_S = (
+    5.0  # Idle wait between polls; a runbook is never so urgent that 5 s matters, and it keeps load low.
+)
 RUNNER_COMMAND_TIMEOUT_S = 600  # Ten minutes covers a rollout restart; longer means something is stuck.
 RUNNER_OUTPUT_CHARS = 4000  # Tail of a command's output sent back; enough to explain a failure.
 BROWSER_DELAY_S = 1.5  # Let uvicorn bind before the browser asks for the page.
 
 
 def _banner() -> None:
-    console.print(rich.panel.Panel.fit("[bold]⚓ Keel[/]  [dim]one AI steward per team[/]", border_style="magenta"))
+    console.print(
+        rich.panel.Panel.fit("[bold]⚓ Keel[/]  [dim]one AI steward per team[/]", border_style="magenta")
+    )
 
 
 def _serve(host: str, port: int, open_browser: bool) -> None:
@@ -43,17 +48,24 @@ def _serve(host: str, port: int, open_browser: bool) -> None:
 
     from keel.api import app as webapp
 
-    url = f"http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}"
+    url = (
+        os.environ.get("KEEL_BASE_URL")
+        or f"http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}"
+    )
     if open_browser:
         threading.Timer(BROWSER_DELAY_S, webbrowser.open, args=(url,)).start()
     console.print(f"  Open [bold cyan]{url}[/]   [dim]Ctrl+C to stop[/]\n")
-    uvicorn.run(webapp.create_app(), host=host, port=port, log_level=os.environ.get("KEEL_LOG_LEVEL", "warning"))
+    uvicorn.run(
+        webapp.create_app(), host=host, port=port, log_level=os.environ.get("KEEL_LOG_LEVEL", "warning")
+    )
 
 
 @app.command()
-def demo(port: int = typer.Option(8420, help="Port to serve on."),
-         fresh: bool = typer.Option(False, "--fresh", help="Start the story over."),
-         no_browser: bool = typer.Option(False, "--no-browser", help="Don't open a browser.")) -> None:
+def demo(
+    port: int = typer.Option(8420, help="Port to serve on."),
+    fresh: bool = typer.Option(False, "--fresh", help="Start the story over."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Don't open a browser."),
+) -> None:
     """Run the demo: three teams, three stewards, a scripted day. No accounts or keys needed."""
     from keel import config
 
@@ -68,13 +80,17 @@ def demo(port: int = typer.Option(8420, help="Port to serve on."),
     config.reset()
     _banner()
     console.print("  Demo org [bold]Acme[/]: Payments 🦉 Pip · Platform 🦫 Bolt · Mobile 🐙 Echo")
-    console.print("  Press [bold]Play next event[/] in the app to run the story. Nothing leaves this machine.")
+    console.print(
+        "  Press [bold]Play next event[/] in the app to run the story. Nothing leaves this machine."
+    )
     _serve("127.0.0.1", port, not no_browser)
 
 
 @app.command()
-def serve(host: str = typer.Option(None, help="Bind address (KEEL_HOST)."),
-          port: int = typer.Option(None, help="Port (KEEL_PORT).")) -> None:
+def serve(
+    host: str = typer.Option(None, help="Bind address (KEEL_HOST)."),
+    port: int = typer.Option(None, help="Port (KEEL_PORT)."),
+) -> None:
     """Run the web app (and the worker, unless KEEL_RUN_WORKER_IN_PROCESS=0)."""
     from keel import config
 
@@ -92,7 +108,9 @@ def worker() -> None:
     from keel import config, db
     from keel import worker as worker_mod
 
-    logging.basicConfig(level=config.get().log_level.upper(), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logging.basicConfig(
+        level=config.get().log_level.upper(), format="%(asctime)s %(levelname)s %(name)s %(message)s"
+    )
     if config.get().auto_migrate:
         db.migrate()
     w = worker_mod.Worker()
@@ -120,9 +138,11 @@ def secret() -> None:
 
 
 @app.command()
-def checkup(repo: str = typer.Argument(..., help="owner/name, e.g. vercel/next.js"),
-            token: str = typer.Option("", envvar="GITHUB_TOKEN", help="GitHub token (raises the rate limit)."),
-            api_url: str = typer.Option("https://api.github.com", help="GitHub Enterprise API URL.")) -> None:
+def checkup(
+    repo: str = typer.Argument(..., help="owner/name, e.g. vercel/next.js"),
+    token: str = typer.Option("", envvar="GITHUB_TOKEN", help="GitHub token (raises the rate limit)."),
+    api_url: str = typer.Option("https://api.github.com", help="GitHub Enterprise API URL."),
+) -> None:
     """A 30-second health checkup of a GitHub repo: what a steward would fix first."""
     from keel import checkup as ck
 
@@ -135,8 +155,13 @@ def checkup(repo: str = typer.Argument(..., help="owner/name, e.g. vercel/next.j
             raise typer.Exit(1) from exc
     sc = ck.score(findings)
     g = ck.grade(sc)
-    console.print(rich.panel.Panel.fit(f"[{GRADE_STYLE[g]}]{g}[/]  [bold]{sc}[/]/100   {repo}",
-                                       title="⚓ Keel checkup", border_style="magenta"))
+    console.print(
+        rich.panel.Panel.fit(
+            f"[{GRADE_STYLE[g]}]{g}[/]  [bold]{sc}[/]/100   {repo}",
+            title="⚓ Keel checkup",
+            border_style="magenta",
+        )
+    )
     st = rich.table.Table(show_header=False, box=None, pad_edge=False)
     for k, v in stats.items():
         st.add_row(f"[dim]{k.replace('_', ' ')}[/]", str(v))
@@ -149,15 +174,20 @@ def checkup(repo: str = typer.Argument(..., help="owner/name, e.g. vercel/next.j
     t.add_column("Finding")
     t.add_column("Detail", overflow="fold")
     for f in sorted(findings, key=lambda f: ck.SEVERITY_COST[f.severity], reverse=True):
-        t.add_row({"high": "🔴", "medium": "🟠", "low": "🔵"}[f.severity], f"[{SEVERITY_STYLE[f.severity]}]{f.title}[/]",
-                  f.detail + (f"\n[dim]{f.url}[/]" if f.url else ""))
+        t.add_row(
+            {"high": "🔴", "medium": "🟠", "low": "🔵"}[f.severity],
+            f"[{SEVERITY_STYLE[f.severity]}]{f.title}[/]",
+            f.detail + (f"\n[dim]{f.url}[/]" if f.url else ""),
+        )
     console.print(t)
     console.print("\n[dim]A Keel steward would keep these on a ledger and nudge owners. Try: keel demo[/]")
 
 
 @app.command()
-def apply(file: pathlib.Path = typer.Option(..., "-f", "--file", exists=True, help="keel.yaml"),
-          dry_run: bool = typer.Option(False, "--dry-run", help="Show the plan without changing anything.")) -> None:
+def apply(
+    file: pathlib.Path = typer.Option(..., "-f", "--file", exists=True, help="keel.yaml"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show the plan without changing anything."),
+) -> None:
     """Create or update teams, stewards, services and knowledge from a YAML file (GitOps)."""
     from keel import db, gitops
 
@@ -166,18 +196,22 @@ def apply(file: pathlib.Path = typer.Option(..., "-f", "--file", exists=True, he
     with db.session() as s:
         changes = gitops.apply(s, plan, base_dir=file.parent, dry_run=dry_run)
     for verb, what in changes:
-        icon = {"create": "[green]+[/]", "update": "[yellow]~[/]", "keep": "[dim]=[/]", "skip": "[red]![/]"}[verb]
+        icon = {"create": "[green]+[/]", "update": "[yellow]~[/]", "keep": "[dim]=[/]", "skip": "[red]![/]"}[
+            verb
+        ]
         console.print(f"  {icon} {rich.markup.escape(what)}")
     n = sum(1 for v, _ in changes if v in ("create", "update"))
     console.print(f"\n{'Would change' if dry_run else 'Changed'} {n} thing{'s' if n != 1 else ''}.")
 
 
 @app.command()
-def runner(server: str = typer.Option(..., envvar="KEEL_SERVER", help="Keel base URL."),
-           token: str = typer.Option(..., envvar="KEEL_RUNNER_TOKEN", help="Shared runner token."),
-           allow: pathlib.Path = typer.Option(..., "--allow", exists=True, help="YAML: runbook id → command."),
-           name: str = typer.Option("", help="Runner name shown in the activity feed."),
-           once: bool = typer.Option(False, "--once", help="Handle at most one run, then exit.")) -> None:
+def runner(
+    server: str = typer.Option(..., envvar="KEEL_SERVER", help="Keel base URL."),
+    token: str = typer.Option(..., envvar="KEEL_RUNNER_TOKEN", help="Shared runner token."),
+    allow: pathlib.Path = typer.Option(..., "--allow", exists=True, help="YAML: runbook id → command."),
+    name: str = typer.Option("", help="Runner name shown in the activity feed."),
+    once: bool = typer.Option(False, "--once", help="Handle at most one run, then exit."),
+) -> None:
     """Run approved runbooks next to your services. Outbound only; runs only commands in --allow."""
     import httpx
     import yaml
@@ -188,7 +222,9 @@ def runner(server: str = typer.Option(..., envvar="KEEL_SERVER", help="Keel base
     console.print(f"🏃 runner [bold]{name}[/] → {server}  ({len(allowed)} allowed runbooks)")
     while True:
         try:
-            r = httpx.post(f"{server.rstrip('/')}/api/runner/next", json={"runner": name}, headers=headers, timeout=30)
+            r = httpx.post(
+                f"{server.rstrip('/')}/api/runner/next", json={"runner": name}, headers=headers, timeout=30
+            )
             r.raise_for_status()
             op = r.json()["op"]
         except httpx.HTTPError as exc:
@@ -197,8 +233,12 @@ def runner(server: str = typer.Option(..., envvar="KEEL_SERVER", help="Keel base
         if op:
             ok, output = _run_allowed(allowed, op)
             console.print(f"{'[green]✓' if ok else '[red]✗'}[/] {op['summary']}")
-            httpx.post(f"{server.rstrip('/')}/api/runner/report", headers=headers, timeout=30,
-                       json={"id": op["id"], "ok": ok, "output": output[-RUNNER_OUTPUT_CHARS:]}).raise_for_status()
+            httpx.post(
+                f"{server.rstrip('/')}/api/runner/report",
+                headers=headers,
+                timeout=30,
+                json={"id": op["id"], "ok": ok, "output": output[-RUNNER_OUTPUT_CHARS:]},
+            ).raise_for_status()
         if once and op:
             return
         if not op:
@@ -214,8 +254,9 @@ def _run_allowed(allowed: dict[str, str], op: dict[str, typing.Any]) -> tuple[bo
     if not cmd:
         return False, f"Runbook {op.get('runbook')!r} isn't in this runner's allow-list."
     try:
-        p = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=RUNNER_COMMAND_TIMEOUT_S,
-                           check=False)
+        p = subprocess.run(
+            shlex.split(cmd), capture_output=True, text=True, timeout=RUNNER_COMMAND_TIMEOUT_S, check=False
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"{type(exc).__name__}: {exc}"
     return p.returncode == 0, (p.stdout + p.stderr).strip() or f"exit {p.returncode}"
@@ -239,13 +280,17 @@ def backup(out: pathlib.Path = typer.Option(None, "-o", help="Output file.")) ->
             console.print("[red]✗[/] pg_dump isn't installed. Install the PostgreSQL client tools.")
             raise typer.Exit(1)
         out = out or pathlib.Path(f"keel-{stamp}.dump")
-        subprocess.run(["pg_dump", "--format=custom", "--no-owner", "--file", str(out), _libpq(url)], check=True)
+        subprocess.run(
+            ["pg_dump", "--format=custom", "--no-owner", "--file", str(out), _libpq(url)], check=True
+        )
     console.print(f"[green]✓[/] Backed up to {out} ({out.stat().st_size // 1024} KB).")
 
 
 @app.command()
-def restore(file: pathlib.Path = typer.Argument(..., exists=True),
-            yes: bool = typer.Option(False, "--yes", help="Don't ask.")) -> None:
+def restore(
+    file: pathlib.Path = typer.Argument(..., exists=True),
+    yes: bool = typer.Option(False, "--yes", help="Don't ask."),
+) -> None:
     """Restore a backup made with ``keel backup``. Replaces current data."""
     from keel import config
 
@@ -255,8 +300,10 @@ def restore(file: pathlib.Path = typer.Argument(..., exists=True),
     if url.startswith("sqlite"):
         shutil.copyfile(file, url.split("///", 1)[1])
     else:
-        subprocess.run(["pg_restore", "--clean", "--if-exists", "--no-owner", "--dbname", _libpq(url), str(file)],
-                       check=True)
+        subprocess.run(
+            ["pg_restore", "--clean", "--if-exists", "--no-owner", "--dbname", _libpq(url), str(file)],
+            check=True,
+        )
     console.print("[green]✓[/] Restored.")
 
 
@@ -277,24 +324,47 @@ def doctor() -> None:
         rows.append((True, "Secret key", "set" if cfg.secret_key else "generated for demo use"))
     except RuntimeError as exc:
         rows.append((False, "Secret key", str(exc)))
-    rows.append((None if cfg.is_sqlite else True, "Database", "SQLite (demo and tests only)" if cfg.is_sqlite
-                 else cfg.database_url.split("@")[-1]))
+    rows.append(
+        (
+            None if cfg.is_sqlite else True,
+            "Database",
+            "SQLite (demo and tests only)" if cfg.is_sqlite else cfg.database_url.split("@")[-1],
+        )
+    )
     if db.ping():
         cur, head = db.current_revision(), db.head_revision()
-        rows.append((cur == head, "Schema", f"at {cur}" if cur == head else f"at {cur}, needs {head}: run keel migrate"))
+        rows.append(
+            (
+                cur == head,
+                "Schema",
+                f"at {cur}" if cur == head else f"at {cur}, needs {head}: run keel migrate",
+            )
+        )
         with db.session() as s:
             import sqlalchemy as sa
 
             org = s.scalar(sa.select(models.Org))
             for kind in ("model", "slack", "github"):
                 res = connections.resolve(s, org.id if org else "", kind)
-                rows.append((True if res.configured else None, kind.title(),
-                             f"configured ({res.source})" if res.configured else "not connected (optional)"))
+                rows.append(
+                    (
+                        True if res.configured else None,
+                        kind.title(),
+                        f"configured ({res.source})" if res.configured else "not connected (optional)",
+                    )
+                )
     else:
         rows.append((False, "Database", "not reachable"))
-    rows.append(((webapp.WEB_DIST / "index.html").exists(), "Web UI",
-                 "built" if (webapp.WEB_DIST / "index.html").exists() else "not built: cd web && npm run build"))
-    rows.append((True if cfg.sso_enabled else None, "SSO", "OIDC on" if cfg.sso_enabled else "off (passwords)"))
+    rows.append(
+        (
+            (webapp.WEB_DIST / "index.html").exists(),
+            "Web UI",
+            "built" if (webapp.WEB_DIST / "index.html").exists() else "not built: cd web && npm run build",
+        )
+    )
+    rows.append(
+        (True if cfg.sso_enabled else None, "SSO", "OIDC on" if cfg.sso_enabled else "off (passwords)")
+    )
     t = rich.table.Table(show_header=False, box=None)
     for ok, what, line in rows:
         t.add_row({True: "[green]✓[/]", False: "[red]✗[/]", None: "[dim]·[/]"}[ok], f"[bold]{what}[/]", line)

@@ -29,7 +29,9 @@ class SlackConnector:
         p = op.payload
         try:
             resp = self.client.chat_postMessage(
-                channel=p["channel"], text=p["text"], thread_ts=p.get("thread_ts"),
+                channel=p["channel"],
+                text=p["text"],
+                thread_ts=p.get("thread_ts"),
                 metadata={"event_type": METADATA_EVENT_TYPE, "event_payload": {"op_id": op.op_id}},
                 unfurl_links=False,
             )
@@ -50,22 +52,39 @@ class SlackConnector:
         oldest = (op.created_at - RECONCILE_LOOKBACK).timestamp()
         try:
             if p.get("thread_ts"):
-                resp = self.client.conversations_replies(channel=p["channel"], ts=p["thread_ts"],
-                                                         oldest=str(oldest), include_all_metadata=True,
-                                                         limit=HISTORY_PAGE_LIMIT)
+                resp = self.client.conversations_replies(
+                    channel=p["channel"],
+                    ts=p["thread_ts"],
+                    oldest=str(oldest),
+                    include_all_metadata=True,
+                    limit=HISTORY_PAGE_LIMIT,
+                )
             else:
-                resp = self.client.conversations_history(channel=p["channel"], oldest=str(oldest),
-                                                         include_all_metadata=True, limit=HISTORY_PAGE_LIMIT)
+                resp = self.client.conversations_history(
+                    channel=p["channel"],
+                    oldest=str(oldest),
+                    include_all_metadata=True,
+                    limit=HISTORY_PAGE_LIMIT,
+                )
         except (slack_errors.SlackApiError, urllib.error.URLError, TimeoutError, ConnectionError) as exc:
-            return base.ReconcileResult(base.Found.UNSURE, line=f"Couldn't read Slack history to check ({type(exc).__name__}).")
+            return base.ReconcileResult(
+                base.Found.UNSURE, line=f"Couldn't read Slack history to check ({type(exc).__name__})."
+            )
         for msg in resp.get("messages", []):
             meta = msg.get("metadata") or {}
-            if meta.get("event_type") == METADATA_EVENT_TYPE and meta.get("event_payload", {}).get("op_id") == op.op_id:
+            if (
+                meta.get("event_type") == METADATA_EVENT_TYPE
+                and meta.get("event_payload", {}).get("op_id") == op.op_id
+            ):
                 return base.ReconcileResult(base.Found.YES, remote_ref=f"{p['channel']}/{msg['ts']}")
         if resp.get("has_more"):
-            return base.ReconcileResult(base.Found.UNSURE, line="Too much channel history to be sure; check by hand.")
+            return base.ReconcileResult(
+                base.Found.UNSURE, line="Too much channel history to be sure; check by hand."
+            )
         if models.utcnow() - op.updated_at < RECONCILE_SETTLE:
-            return base.ReconcileResult(base.Found.UNSURE, line="Too soon to be sure; checking again shortly.")
+            return base.ReconcileResult(
+                base.Found.UNSURE, line="Too soon to be sure; checking again shortly."
+            )
         return base.ReconcileResult(base.Found.NO, line="The message is not in the channel.")
 
 
@@ -79,5 +98,8 @@ def test_credentials(bot_token: str, app_token: str = "") -> tuple[bool, str]:
     except Exception as exc:
         return False, f"Couldn't reach Slack ({type(exc).__name__})."
     if app_token and not app_token.startswith("xapp-"):
-        return False, "The app-level token should start with xapp-. Create one under Basic Information → App-Level Tokens."
+        return (
+            False,
+            "The app-level token should start with xapp-. Create one under Basic Information → App-Level Tokens.",
+        )
     return True, f"Connected to {auth.get('team')} as @{auth.get('user')}."

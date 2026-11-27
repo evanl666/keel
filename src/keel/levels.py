@@ -86,7 +86,9 @@ def approval_rate(outcomes: list[str]) -> float | None:
     return sum(1 for o in outcomes if o == "approved") / len(outcomes)
 
 
-def promotion_status(session: orm.Session, steward: models.Steward, now: dt.datetime | None = None) -> PromotionStatus:
+def promotion_status(
+    session: orm.Session, steward: models.Steward, now: dt.datetime | None = None
+) -> PromotionStatus:
     """Compute samples and approval rate in the window, and whether the next level is earned."""
     now = now or models.utcnow()
     since = now - dt.timedelta(days=PROMOTION_WINDOW_DAYS)
@@ -116,8 +118,12 @@ def set_level(session: orm.Session, steward: models.Steward, to: int, reason: st
         return
     session.add(
         models.LevelEvent(
-            org_id=steward.org_id, team_id=steward.team_id, from_level=steward.level, to_level=to,
-            reason=reason, actor=actor,
+            org_id=steward.org_id,
+            team_id=steward.team_id,
+            from_level=steward.level,
+            to_level=to,
+            reason=reason,
+            actor=actor,
         )
     )
     steward.level = to
@@ -126,7 +132,9 @@ def set_level(session: orm.Session, steward: models.Steward, to: int, reason: st
 def record_sample(session: orm.Session, steward: models.Steward, action_kind: str, outcome: str) -> None:
     """Record a human verdict (or an autonomous error) and demote when errors pile up."""
     session.add(
-        models.LevelSample(org_id=steward.org_id, team_id=steward.team_id, action_kind=action_kind, outcome=outcome)
+        models.LevelSample(
+            org_id=steward.org_id, team_id=steward.team_id, action_kind=action_kind, outcome=outcome
+        )
     )
     if outcome not in ("rejected", "error") or steward.level == 0:
         return
@@ -138,7 +146,9 @@ def record_sample(session: orm.Session, steward: models.Steward, action_kind: st
     if last_change is not None and last_change > since:
         since = last_change  # Errors before the last level change were already acted on.
     recent_bad = session.scalar(
-        sa.select(sa.func.count()).select_from(models.LevelSample).where(
+        sa.select(sa.func.count())
+        .select_from(models.LevelSample)
+        .where(
             models.LevelSample.team_id == steward.team_id,
             models.LevelSample.at >= since,
             models.LevelSample.outcome.in_(("rejected", "error")),
@@ -146,6 +156,9 @@ def record_sample(session: orm.Session, steward: models.Steward, action_kind: st
     )
     if recent_bad is not None and recent_bad >= DEMOTION_ERROR_LIMIT:
         set_level(
-            session, steward, steward.level - 1,
-            f"{recent_bad} rejected or failed actions in the last 24 hours.", "keel",
+            session,
+            steward,
+            steward.level - 1,
+            f"{recent_bad} rejected or failed actions in the last 24 hours.",
+            "keel",
         )

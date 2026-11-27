@@ -16,8 +16,14 @@ MAX_JOB_ATTEMPTS = 5  # After this a job is parked as failed with its last error
 RETRY_BACKOFF_S = (5, 30, 120, 600)  # Grows so a down dependency isn't hammered; last value repeats.
 
 
-def enqueue(session: orm.Session, org_id: str, kind: str, payload: dict[str, typing.Any] | None = None,
-            run_at: dt.datetime | None = None, dedupe_key: str | None = None) -> models.Job | None:
+def enqueue(
+    session: orm.Session,
+    org_id: str,
+    kind: str,
+    payload: dict[str, typing.Any] | None = None,
+    run_at: dt.datetime | None = None,
+    dedupe_key: str | None = None,
+) -> models.Job | None:
     """Add a job. With ``dedupe_key``, a second enqueue while the first is pending is ignored (returns None)."""
     if dedupe_key is not None:
         existing = session.scalar(sa.select(models.Job).where(models.Job.dedupe_key == dedupe_key))
@@ -26,8 +32,13 @@ def enqueue(session: orm.Session, org_id: str, kind: str, payload: dict[str, typ
                 return None
             session.delete(existing)
             session.flush()
-    job = models.Job(org_id=org_id, kind=kind, payload=payload or {}, run_at=run_at or models.utcnow(),
-                     dedupe_key=dedupe_key)
+    job = models.Job(
+        org_id=org_id,
+        kind=kind,
+        payload=payload or {},
+        run_at=run_at or models.utcnow(),
+        dedupe_key=dedupe_key,
+    )
     try:
         with session.begin_nested():
             session.add(job)
@@ -53,8 +64,12 @@ def claim(worker_id: str, limit: int = 10) -> list[str]:
             res = s.execute(
                 sa.update(models.Job)
                 .where(models.Job.id == job_id, ready)
-                .values(status="running", locked_by=worker_id, lease_until=now + JOB_LEASE,
-                        attempts=models.Job.attempts + 1)
+                .values(
+                    status="running",
+                    locked_by=worker_id,
+                    lease_until=now + JOB_LEASE,
+                    attempts=models.Job.attempts + 1,
+                )
             )
             if res.rowcount == 1:
                 claimed.append(job_id)
@@ -64,7 +79,9 @@ def claim(worker_id: str, limit: int = 10) -> list[str]:
 def finish(job_id: str) -> None:
     """Mark a job done."""
     with db.session() as s:
-        s.execute(sa.update(models.Job).where(models.Job.id == job_id).values(status="done", lease_until=None))
+        s.execute(
+            sa.update(models.Job).where(models.Job.id == job_id).values(status="done", lease_until=None)
+        )
 
 
 def fail(job_id: str, error: str) -> None:
@@ -84,5 +101,11 @@ def fail(job_id: str, error: str) -> None:
 
 def depth(session: orm.Session) -> int:
     """Number of jobs waiting or running."""
-    return session.scalar(sa.select(sa.func.count()).select_from(models.Job).where(
-        models.Job.status.in_(("queued", "running")))) or 0
+    return (
+        session.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.Job)
+            .where(models.Job.status.in_(("queued", "running")))
+        )
+        or 0
+    )

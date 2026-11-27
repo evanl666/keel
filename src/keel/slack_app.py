@@ -44,15 +44,27 @@ class SlackBridge:
             team = inbox.team_for_channel(s, channel)
             if team is None and event.get("channel_type") == "im":
                 team = self._team_for_user(s, event.get("user", ""))
-            payload = {"text": event.get("text", ""), "user": event.get("user"), "user_name": self._name(event.get("user", "")),
-                       "channel": channel, "ts": ts, "thread_ts": event.get("thread_ts") or ts, "directed": directed}
+            payload = {
+                "text": event.get("text", ""),
+                "user": event.get("user"),
+                "user_name": self._name(event.get("user", "")),
+                "channel": channel,
+                "ts": ts,
+                "thread_ts": event.get("thread_ts") or ts,
+                "directed": directed,
+            }
             # Mentions arrive twice (app_mention + message); both share channel+ts, so the second is a no-op.
-            inbox.record(s, self.org_id, team.id if team else None, "slack", f"{channel}:{ts}", "message", payload)
+            inbox.record(
+                s, self.org_id, team.id if team else None, "slack", f"{channel}:{ts}", "message", payload
+            )
 
     def _team_for_user(self, s: sa.orm.Session, slack_user: str) -> models.Team | None:
-        return s.scalar(sa.select(models.Team).join(models.TeamMember, models.TeamMember.team_id == models.Team.id)
-                        .join(models.User, models.User.id == models.TeamMember.user_id)
-                        .where(models.User.slack_user_id == slack_user))
+        return s.scalar(
+            sa.select(models.Team)
+            .join(models.TeamMember, models.TeamMember.team_id == models.Team.id)
+            .join(models.User, models.User.id == models.TeamMember.user_id)
+            .where(models.User.slack_user_id == slack_user)
+        )
 
     def _on_mention(self, event: dict, **_: typing.Any) -> None:
         self._record(event, directed=True)
@@ -63,7 +75,9 @@ class SlackBridge:
     def _on_command(self, ack: typing.Callable, command: dict, **_: typing.Any) -> None:
         text = (command.get("text") or "").strip()
         with db.session() as s:
-            team = inbox.team_for_channel(s, command.get("channel_id", "")) or self._team_for_user(s, command.get("user_id", ""))
+            team = inbox.team_for_channel(s, command.get("channel_id", "")) or self._team_for_user(
+                s, command.get("user_id", "")
+            )
             if team is None:
                 ack("This channel has no steward yet. An admin can add it in Keel → Teams.")
                 return
@@ -71,15 +85,29 @@ class SlackBridge:
             if text in ("", "status"):
                 rows = ledger.open_for_team(s, team.id)
                 risky = [c for c in rows if ledger.risk(c) in ("at_risk", "overdue")]
-                lines = [f"{st.emoji} *{st.name}* · {team.name} · L{st.level}",
-                         f"{len(rows)} open, {len(risky)} at risk or overdue."]
+                lines = [
+                    f"{st.emoji} *{st.name}* · {team.name} · L{st.level}",
+                    f"{len(rows)} open, {len(risky)} at risk or overdue.",
+                ]
                 lines += [f"• {c.key} {c.title} ({ledger.risk(c).replace('_', ' ')})" for c in risky[:5]]
                 ack("\n".join(lines))
                 return
             ack(f"{st.emoji} On it.")
-            inbox.record(s, self.org_id, team.id, "slack", f"cmd:{command.get('trigger_id', '')}", "message",
-                         {"text": text, "user": command.get("user_id"), "user_name": command.get("user_name"),
-                          "channel": command.get("channel_id"), "directed": True})
+            inbox.record(
+                s,
+                self.org_id,
+                team.id,
+                "slack",
+                f"cmd:{command.get('trigger_id', '')}",
+                "message",
+                {
+                    "text": text,
+                    "user": command.get("user_id"),
+                    "user_name": command.get("user_name"),
+                    "channel": command.get("channel_id"),
+                    "directed": True,
+                },
+            )
 
     def start(self) -> None:
         """Connect (non-blocking)."""
@@ -110,7 +138,9 @@ def start_for_install() -> SlackBridge | None:
         bridge.start()
     except Exception as exc:
         with db.session() as s:
-            connections.mark(s, org_id, "slack", "error", f"Socket Mode couldn't connect ({type(exc).__name__}).")
+            connections.mark(
+                s, org_id, "slack", "error", f"Socket Mode couldn't connect ({type(exc).__name__})."
+            )
         log.warning("slack socket mode failed: %s", exc)
         return None
     return bridge

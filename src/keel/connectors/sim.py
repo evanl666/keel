@@ -43,8 +43,14 @@ class SimConnector:
             return self._write_in(remote, op, system)
 
     def _write_in(self, remote, op: models.Operation, system: str) -> str:
-        count = remote.scalar(sa.select(sa.func.count()).select_from(models.SimRecord).where(
-            models.SimRecord.org_id == self.org_id, models.SimRecord.system == system)) or 0
+        count = (
+            remote.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.SimRecord)
+                .where(models.SimRecord.org_id == self.org_id, models.SimRecord.system == system)
+            )
+            or 0
+        )
         p = op.payload
         if system == "github":
             ref = f"https://github.example/{p.get('repo', 'acme/app')}/issues/{1200 + count}"
@@ -52,15 +58,23 @@ class SimConnector:
         else:
             ref = f"slack://{p.get('channel', op.target)}/{count + 1}"
             text = p.get("text", "")
-        remote.add(models.SimRecord(org_id=self.org_id, system=system, target=op.target, text=text,
-                                    op_id=op.op_id, ref=ref))
+        remote.add(
+            models.SimRecord(
+                org_id=self.org_id, system=system, target=op.target, text=text, op_id=op.op_id, ref=ref
+            )
+        )
         return ref
 
     def reconcile(self, op: models.Operation) -> base.ReconcileResult:
         """The simulator's listing is authoritative: look up by op_id."""
         with db.session() as remote:
-            rec = remote.scalar(sa.select(models.SimRecord).where(models.SimRecord.org_id == self.org_id,
-                                                                  models.SimRecord.op_id == op.op_id))
+            rec = remote.scalar(
+                sa.select(models.SimRecord).where(
+                    models.SimRecord.org_id == self.org_id, models.SimRecord.op_id == op.op_id
+                )
+            )
         if rec is not None:
-            return base.ReconcileResult(base.Found.YES, remote_ref=rec.ref, line="Found it: the write went through.")
+            return base.ReconcileResult(
+                base.Found.YES, remote_ref=rec.ref, line="Found it: the write went through."
+            )
         return base.ReconcileResult(base.Found.NO, line="Not there: the write never landed.")

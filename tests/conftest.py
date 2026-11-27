@@ -44,8 +44,9 @@ def team(database: str) -> models.Team:
         admin = models.User(org_id=org.id, email="ada@test.example", name="Ada", role="org_admin")
         s.add(admin)
         s.flush()
-        t = routes.create_team(s, org, routes.NewTeam(name="Payments", steward_name="Pip", slack_channel="#payments"),
-                               admin)
+        t = routes.create_team(
+            s, org, routes.NewTeam(name="Payments", steward_name="Pip", slack_channel="#payments"), admin
+        )
         s.expunge_all()
     return t
 

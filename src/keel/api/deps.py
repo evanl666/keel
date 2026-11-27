@@ -24,8 +24,12 @@ Session = typing.Annotated[orm.Session, fastapi.Depends(get_session)]
 
 def demo_admin(s: orm.Session) -> models.User | None:
     """The demo org's admin (auto sign-in in demo mode)."""
-    return s.scalar(sa.select(models.User).join(models.Org, models.Org.id == models.User.org_id)
-                    .where(models.User.role == "org_admin").order_by(models.User.created_at))
+    return s.scalar(
+        sa.select(models.User)
+        .join(models.Org, models.Org.id == models.User.org_id)
+        .where(models.User.role == "org_admin")
+        .order_by(models.User.created_at)
+    )
 
 
 def current_user(request: fastapi.Request, s: Session) -> models.User | None:

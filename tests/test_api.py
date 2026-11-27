@@ -38,7 +38,9 @@ def ok(r: typing.Any) -> typing.Any:
 def drain_all() -> None:
     for _ in range(6):
         with db.session() as s:
-            s.execute(sa.update(models.Job).where(models.Job.status == "queued").values(run_at=models.utcnow()))
+            s.execute(
+                sa.update(models.Job).where(models.Job.status == "queued").values(run_at=models.utcnow())
+            )
         if worker.drain() == 0:
             return
 
@@ -121,17 +123,45 @@ def test_setup_is_open_until_an_admin_exists(fresh: testclient.TestClient) -> No
     me = ok(fresh.get("/api/me"))
     assert me["user"] is None and me["setup_complete"] is False
     assert fresh.get("/api/overview").status_code == 401
-    ok(fresh.post("/api/setup/admin", json={"org_name": "Testco", "email": "ada@test.example", "name": "Ada",
-                                             "password": "correct horse battery"}))
+    ok(
+        fresh.post(
+            "/api/setup/admin",
+            json={
+                "org_name": "Testco",
+                "email": "ada@test.example",
+                "name": "Ada",
+                "password": "correct horse battery",
+            },
+        )
+    )
     assert ok(fresh.get("/api/me"))["user"]["role"] == "org_admin"
     fresh.cookies.clear()
-    r = fresh.post("/api/setup/admin", json={"org_name": "Evil", "email": "eve@x.example", "name": "Eve",
-                                              "password": "correct horse battery"})
+    r = fresh.post(
+        "/api/setup/admin",
+        json={
+            "org_name": "Evil",
+            "email": "eve@x.example",
+            "name": "Eve",
+            "password": "correct horse battery",
+        },
+    )
     assert r.status_code in (401, 403)
     bad = fresh.post("/api/auth/login", json={"email": "ada@test.example", "password": "wrong"})
     assert bad.status_code == 401
     ok(fresh.post("/api/auth/login", json={"email": "ada@test.example", "password": "correct horse battery"}))
     assert ok(fresh.get("/api/me"))["user"]["email"] == "ada@test.example"
+
+
+def test_setup_flags_an_unknown_model_provider(
+    fresh: testclient.TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from keel import config
+
+    # Docker Compose reads "KEEL_MODEL_PROVIDER=  # comment" as the comment, which once showed as "Connected".
+    monkeypatch.setenv("KEEL_MODEL_PROVIDER", "# anthropic | openai")
+    config.reset()
+    model = next(st for st in ok(fresh.get("/api/setup"))["steps"] if st["id"] == "model")
+    assert model["done"] is False and "Unknown model provider" in model["detail"]
 
 
 def test_runner_endpoints_need_the_token(fresh: testclient.TestClient) -> None:
@@ -141,3 +171,16 @@ def test_runner_endpoints_need_the_token(fresh: testclient.TestClient) -> None:
 def test_github_webhook_off_without_secret(fresh: testclient.TestClient) -> None:
     r = fresh.post("/hooks/github", content=b"{}", headers={"X-GitHub-Event": "ping"})
     assert r.status_code in (403, 404, 503)
+
+
+def test_ui_deep_links_serve_the_app(
+    demo: testclient.TestClient, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "index.html").write_text("<html>keel ui</html>")
+    monkeypatch.setattr(app_module, "WEB_DIST", tmp_path)
+    with testclient.TestClient(app_module.create_app()) as client:
+        for path in ("/", "/teams/payments/front-desk", "/ledger"):
+            r = client.get(path)
+            assert r.status_code == 200 and "keel ui" in r.text, path
+        assert client.get("/assets/gone-123.js").status_code == 404
+        assert client.get("/api/nope").status_code == 404

@@ -17,6 +17,7 @@ import fastapi
 import prometheus_client
 import pydantic
 import sqlalchemy as sa
+import starlette.exceptions
 from fastapi import responses, staticfiles
 
 from keel import auth_utils, config, db, demo, feed, gateway, inbox, jobs, models, worker
@@ -46,9 +47,14 @@ auth = fastapi.APIRouter(prefix="/api")
 def me_payload(s: sa.orm.Session, u: models.User | None) -> dict:
     """Me."""
     org = s.get(models.Org, u.org_id) if u else setup.org_of(s)
-    return {"user": serial.user(u), "org": {"id": org.id, "name": org.name} if org else None,
-            "demo": config.get().demo, "setup_complete": setup.setup_complete(s),
-            "sso_enabled": config.get().sso_enabled, "version": version()}
+    return {
+        "user": serial.user(u),
+        "org": {"id": org.id, "name": org.name} if org else None,
+        "demo": config.get().demo,
+        "setup_complete": setup.setup_complete(s),
+        "sso_enabled": config.get().sso_enabled,
+        "version": version(),
+    }
 
 
 @auth.get("/me")
@@ -63,8 +69,14 @@ class Login(pydantic.BaseModel):
 
 
 def _set_cookie(request: fastapi.Request, response: fastapi.Response, user_id: str) -> None:
-    response.set_cookie(deps.COOKIE, auth_utils.sign_session(user_id), httponly=True, samesite="lax",
-                        secure=request.url.scheme == "https", max_age=auth_utils.SESSION_MAX_AGE_S)
+    response.set_cookie(
+        deps.COOKIE,
+        auth_utils.sign_session(user_id),
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+        max_age=auth_utils.SESSION_MAX_AGE_S,
+    )
 
 
 @auth.post("/auth/login")
@@ -89,8 +101,12 @@ def _oidc_client() -> typing.Any:
     from authlib.integrations.httpx_client import OAuth2Client
 
     cfg = config.get()
-    return OAuth2Client(cfg.oidc_client_id, cfg.oidc_client_secret, scope="openid email profile",
-                        redirect_uri=f"{cfg.base_url.rstrip('/')}/api/auth/sso/callback")
+    return OAuth2Client(
+        cfg.oidc_client_id,
+        cfg.oidc_client_secret,
+        scope="openid email profile",
+        redirect_uri=f"{cfg.base_url.rstrip('/')}/api/auth/sso/callback",
+    )
 
 
 def _oidc_meta() -> dict:
@@ -104,16 +120,22 @@ def _oidc_meta() -> dict:
 def sso_start() -> responses.RedirectResponse:
     """Redirect to the IdP."""
     if not config.get().sso_enabled:
-        raise fastapi.HTTPException(404, "SSO isn't configured. Set KEEL_OIDC_ISSUER and KEEL_OIDC_CLIENT_ID.")
+        raise fastapi.HTTPException(
+            404, "SSO isn't configured. Set KEEL_OIDC_ISSUER and KEEL_OIDC_CLIENT_ID."
+        )
     state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
-    url, _ = _oidc_client().create_authorization_url(_oidc_meta()["authorization_endpoint"], state=state, nonce=nonce)
+    url, _ = _oidc_client().create_authorization_url(
+        _oidc_meta()["authorization_endpoint"], state=state, nonce=nonce
+    )
     resp = responses.RedirectResponse(url, 302)
     resp.set_cookie(OIDC_STATE_COOKIE, f"{state}.{nonce}", httponly=True, samesite="lax", max_age=600)
     return resp
 
 
 @auth.get("/auth/sso/callback")
-def sso_callback(request: fastapi.Request, s: deps.Session, code: str = "", state: str = "") -> responses.RedirectResponse:
+def sso_callback(
+    request: fastapi.Request, s: deps.Session, code: str = "", state: str = ""
+) -> responses.RedirectResponse:
     """Finish OIDC sign-in: verify state, exchange the code, read userinfo, create or link the user."""
     want_state, _, _nonce = (request.cookies.get(OIDC_STATE_COOKIE) or "").partition(".")
     if not code or not want_state or not hmac.compare_digest(state, want_state):
@@ -132,8 +154,14 @@ def sso_callback(request: fastapi.Request, s: deps.Session, code: str = "", stat
     groups = info.get("groups") or []
     role = "org_admin" if cfg.oidc_admin_group and cfg.oidc_admin_group in groups else "member"
     if u is None:
-        u = models.User(org_id=org.id, email=email, name=info.get("name") or email.split("@")[0], role=role,
-                        sso_subject=info.get("sub"), avatar_url=info.get("picture"))
+        u = models.User(
+            org_id=org.id,
+            email=email,
+            name=info.get("name") or email.split("@")[0],
+            role=role,
+            sso_subject=info.get("sub"),
+            avatar_url=info.get("picture"),
+        )
         s.add(u)
         s.flush()
     elif role == "org_admin" and u.role != "org_admin":
@@ -163,8 +191,14 @@ async def activity_stream(request: fastapi.Request, u: deps.User) -> responses.S
             q = sa.select(models.Activity).where(models.Activity.org_id == org_id)
             if after is None:
                 rows = list(s.scalars(q.order_by(models.Activity.id.desc()).limit(STREAM_BACKLOG)))[::-1]
-                return [{"_id": a.id} for a in rows[-1:]]  # Start after the newest; the UI already loaded history.
-            rows = list(s.scalars(q.where(models.Activity.id > after).order_by(models.Activity.id).limit(STREAM_BACKLOG)))
+                return [
+                    {"_id": a.id} for a in rows[-1:]
+                ]  # Start after the newest; the UI already loaded history.
+            rows = list(
+                s.scalars(
+                    q.where(models.Activity.id > after).order_by(models.Activity.id).limit(STREAM_BACKLOG)
+                )
+            )
             idx = serial.TeamIndex(s, org_id)
             return [{"_id": a.id, **serial.activity(a, idx)} for a in rows]
 
@@ -189,8 +223,11 @@ async def activity_stream(request: fastapi.Request, u: deps.User) -> responses.S
                     yield ": ping\n\n"
             await asyncio.sleep(STREAM_POLL_S)
 
-    return responses.StreamingResponse(gen(), media_type="text/event-stream",
-                                       headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return responses.StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---------------------------------------------------------------- runner and webhooks
@@ -201,7 +238,9 @@ hooks = fastapi.APIRouter()
 def _require_runner(authorization: str = fastapi.Header("")) -> None:
     token = config.get().runner_token
     if not token:
-        raise fastapi.HTTPException(404, "No runner is configured. Set KEEL_RUNNER_TOKEN on the server and runner.")
+        raise fastapi.HTTPException(
+            404, "No runner is configured. Set KEEL_RUNNER_TOKEN on the server and runner."
+        )
     if not hmac.compare_digest(authorization.removeprefix("Bearer ").strip(), token):
         raise fastapi.HTTPException(401, "Wrong runner token.")
 
@@ -216,9 +255,16 @@ def runner_next(body: RunnerNext, s: deps.Session) -> dict:
     op = gateway.runner_claim(s, body.runner[:60])
     if op is None:
         return {"op": None}
-    return {"op": {"id": op.id, "op_id": op.op_id, "runbook": op.payload.get("runbook"),
-                   "command": op.payload.get("command"), "service": op.payload.get("service"),
-                   "summary": op.summary}}
+    return {
+        "op": {
+            "id": op.id,
+            "op_id": op.op_id,
+            "runbook": op.payload.get("runbook"),
+            "command": op.payload.get("command"),
+            "service": op.payload.get("service"),
+            "summary": op.summary,
+        }
+    }
 
 
 class RunnerReport(pydantic.BaseModel):
@@ -243,7 +289,9 @@ async def github_webhook(request: fastapi.Request) -> dict:
     raw = await request.body()
     secret = config.get().github_webhook_secret
     if not secret:
-        raise fastapi.HTTPException(404, "GitHub webhooks are off. Set KEEL_GITHUB_WEBHOOK_SECRET to turn them on.")
+        raise fastapi.HTTPException(
+            404, "GitHub webhooks are off. Set KEEL_GITHUB_WEBHOOK_SECRET to turn them on."
+        )
     sig = request.headers.get("x-hub-signature-256", "")
     want = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, want):
@@ -259,9 +307,21 @@ async def github_webhook(request: fastapi.Request) -> dict:
         org = setup.org_of(s)
         if org is None:
             return {"ok": True, "ignored": "no org"}
-        inbox.record(s, org.id, team.id if team else None, "github", delivery or hashlib.sha256(raw).hexdigest(),
-                     event, {"text": text, "user_name": user, "permalink": url, "repo": repo,
-                             "directed": "@keel" in text.lower()})
+        inbox.record(
+            s,
+            org.id,
+            team.id if team else None,
+            "github",
+            delivery or hashlib.sha256(raw).hexdigest(),
+            event,
+            {
+                "text": text,
+                "user_name": user,
+                "permalink": url,
+                "repo": repo,
+                "directed": "@keel" in text.lower(),
+            },
+        )
     return {"ok": True}
 
 
@@ -297,7 +357,9 @@ def readyz() -> responses.JSONResponse:
         return responses.JSONResponse({"ok": False, "detail": "The database isn't reachable."}, 503)
     cur, head = db.current_revision(), db.head_revision()
     if cur != head:
-        return responses.JSONResponse({"ok": False, "detail": f"Database is at {cur}, code needs {head}. Run keel migrate."}, 503)
+        return responses.JSONResponse(
+            {"ok": False, "detail": f"Database is at {cur}, code needs {head}. Run keel migrate."}, 503
+        )
     with db.session() as s:
         depth = jobs.depth(s)
     return responses.JSONResponse({"ok": True, "queue_depth": depth})
@@ -306,10 +368,13 @@ def readyz() -> responses.JSONResponse:
 @probes.get("/metrics")
 def metrics() -> fastapi.Response:
     """Prometheus metrics."""
-    return fastapi.Response(prometheus_client.generate_latest(), media_type=prometheus_client.CONTENT_TYPE_LATEST)
+    return fastapi.Response(
+        prometheus_client.generate_latest(), media_type=prometheus_client.CONTENT_TYPE_LATEST
+    )
 
 
 # ---------------------------------------------------------------- app
+
 
 def _seed_demo() -> None:
     with db.session() as s:
@@ -347,20 +412,24 @@ class SPAStatic(staticfiles.StaticFiles):
 
     async def get_response(self, path: str, scope: typing.Any) -> typing.Any:
         try:
-            resp = await super().get_response(path, scope)
-        except fastapi.HTTPException as exc:
-            if exc.status_code != 404:
+            return await super().get_response(path, scope)
+        except starlette.exceptions.HTTPException as exc:
+            # A missing file (a path with an extension, like an old hashed asset) stays a 404.
+            if exc.status_code != 404 or "." in path.rsplit("/", 1)[-1]:
                 raise
-            resp = None
-        if resp is None or resp.status_code == 404:
-            return await super().get_response("index.html", scope)
-        return resp
+        return await super().get_response("index.html", scope)
 
 
 def create_app() -> fastapi.FastAPI:
     """Build the app."""
-    app = fastapi.FastAPI(title="Keel", version=version(), lifespan=lifespan, docs_url="/api/docs",
-                          openapi_url="/api/openapi.json", redoc_url=None)
+    app = fastapi.FastAPI(
+        title="Keel",
+        version=version(),
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        redoc_url=None,
+    )
 
     @app.exception_handler(ValueError)
     async def value_error(_r: fastapi.Request, exc: ValueError) -> responses.JSONResponse:
@@ -373,15 +442,21 @@ def create_app() -> fastapi.FastAPI:
     for r in (auth, setup.router, routes.router, stream, hooks, probes):
         app.include_router(r)
 
-    @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"], include_in_schema=False)
+    @app.api_route(
+        "/api/{rest:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"], include_in_schema=False
+    )
     def api_404(rest: str) -> None:
         raise fastapi.HTTPException(404, f"There's no API endpoint /api/{rest}.")
 
     if (WEB_DIST / "index.html").exists():
         app.mount("/", SPAStatic(directory=WEB_DIST, html=True), name="web")
     else:
+
         @app.get("/", include_in_schema=False)
         def no_ui() -> responses.HTMLResponse:
-            return responses.HTMLResponse("<h1>Keel API is running</h1><p>The web UI isn't built. "
-                                          "Run <code>npm run build</code> in <code>web/</code>.</p><p><a href=/api/docs>API docs</a></p>")
+            return responses.HTMLResponse(
+                "<h1>Keel API is running</h1><p>The web UI isn't built. "
+                "Run <code>npm run build</code> in <code>web/</code>.</p><p><a href=/api/docs>API docs</a></p>"
+            )
+
     return app

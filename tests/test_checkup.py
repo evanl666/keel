@@ -21,19 +21,41 @@ def _ago(days: int) -> str:
 @pytest.fixture
 def gh() -> respx.MockRouter:
     with respx.mock(base_url=API, assert_all_called=False) as r:
-        r.get("/repos/acme/app").respond(json={"default_branch": "main", "html_url": "https://github.com/acme/app",
-                                                "stargazers_count": 7})
-        r.get("/repos/acme/app/pulls", params={"state": "open"}).respond(json=[
-            {"number": 1, "title": "Old", "updated_at": _ago(40), "created_at": _ago(60), "html_url": "u1"},
-            {"number": 2, "title": "Fresh", "updated_at": _ago(1), "created_at": _ago(1), "html_url": "u2"},
-        ])
+        r.get("/repos/acme/app").respond(
+            json={"default_branch": "main", "html_url": "https://github.com/acme/app", "stargazers_count": 7}
+        )
+        r.get("/repos/acme/app/pulls", params={"state": "open"}).respond(
+            json=[
+                {
+                    "number": 1,
+                    "title": "Old",
+                    "updated_at": _ago(40),
+                    "created_at": _ago(60),
+                    "html_url": "u1",
+                },
+                {
+                    "number": 2,
+                    "title": "Fresh",
+                    "updated_at": _ago(1),
+                    "created_at": _ago(1),
+                    "html_url": "u2",
+                },
+            ]
+        )
         r.get("/repos/acme/app/pulls/1/reviews").respond(json=[])
-        r.get("/repos/acme/app/pulls", params={"state": "closed"}).respond(json=[
-            {"created_at": _ago(10), "merged_at": _ago(9)}, {"created_at": _ago(5), "merged_at": None}])
-        r.get("/repos/acme/app/issues").respond(json=[
-            {"created_at": _ago(90), "assignees": []}, {"created_at": _ago(2), "assignees": []},
-            {"created_at": _ago(90), "assignees": [], "pull_request": {}}])
-        r.get("/repos/acme/app/commits/main/check-runs").respond(json={"check_runs": [{"conclusion": "failure"}]})
+        r.get("/repos/acme/app/pulls", params={"state": "closed"}).respond(
+            json=[{"created_at": _ago(10), "merged_at": _ago(9)}, {"created_at": _ago(5), "merged_at": None}]
+        )
+        r.get("/repos/acme/app/issues").respond(
+            json=[
+                {"created_at": _ago(90), "assignees": []},
+                {"created_at": _ago(2), "assignees": []},
+                {"created_at": _ago(90), "assignees": [], "pull_request": {}},
+            ]
+        )
+        r.get("/repos/acme/app/commits/main/check-runs").respond(
+            json={"check_runs": [{"conclusion": "failure"}]}
+        )
         r.get(url__regex=r".*/contents/.*CODEOWNERS").respond(404)
         r.get("/repos/acme/app/contents/SECURITY.md").respond(json={})
         r.get("/repos/acme/app/community/profile").respond(json={"files": {"contributing": {"url": "x"}}})

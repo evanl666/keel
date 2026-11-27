@@ -60,6 +60,7 @@ markers = [
   "postgres: needs KEEL_TEST_DATABASE_URL pointing at Postgres",
 ]
 addopts = "-q"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 110

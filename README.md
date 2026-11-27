@@ -6,10 +6,17 @@ what the team has trusted it to do.
 
 [中文说明](#中文) · [Quickstart](#quickstart) · [How it works](#how-it-works) · [Deploy](#deploy) · [API](docs/api.md)
 
+![Overview: three teams, their stewards, cross-team requests and live activity](docs/screenshots/overview.png)
+
 ```bash
-pipx install keel-steward      # or: uv tool install keel-steward
-keel demo                      # a live company of three teams in your browser, no keys needed
+git clone https://github.com/evanl666/keel && cd keel
+(cd web && npm ci && npm run build)   # builds the UI into src/keel/web_dist
+uv tool install .                     # or: pipx install .
+keel demo                             # a live company of three teams in your browser, no keys needed
 ```
+
+> v0.1 isn't on PyPI or GHCR yet, so install from source as above. Once published, this becomes
+> `pipx install keel-steward` and the release wheel carries the built UI.
 
 ---
 
@@ -38,17 +45,22 @@ Every approve, edit or reject is a sample. A steward earns the next level at 50 
 unedited in 30 days, and a person signs off. Three failed or rejected actions in a day step it down a level.
 A YAML file can lower a level but never raise one.
 
+| Front desk: answers with sources | Approvals: exactly what will be sent |
+| --- | --- |
+| ![Front desk](docs/screenshots/front-desk.png) | ![Approvals](docs/screenshots/approvals.png) |
+| **Levels: earned from approvals** | **Checkup: a graded repo report** |
+| ![Level](docs/screenshots/level.png) | ![Checkup](docs/screenshots/checkup.png) |
+
 ## Quickstart
 
 ### 1. Try it: `keel demo` (2 minutes, nothing to configure)
 
 ```bash
-pipx install keel-steward
-keel demo
+keel demo            # --fresh starts the story over, --port changes the port (default 8420)
 ```
 
-You get a seeded company (Acme: Payments 🦉 Pip, Platform 🦫 Bolt, Mobile 🐙 Echo) on SQLite in `~/.keel/demo.db`.
-Press **Play the story** to watch nine scripted moments: a request turns into a commitment, a draft waits for
+You get a seeded company (Acme: Payments 🦉 Pip, Platform 🦫 Bolt, Mobile 🐙 Echo) on SQLite in `~/.keel/demo.db`,
+signed in as the demo admin. Press **Play next event** to step through nine scripted moments: a request turns into a commitment, a draft waits for
 approval, an outage opens and closes an incident, a GitHub write loses its response and Keel checks before
 retrying, and a leak attempt is blocked by a canary. Slack and GitHub are simulated; no data leaves your machine.
 
@@ -87,8 +99,9 @@ in one line why it failed if it does.
 ```bash
 git clone https://github.com/evanl666/keel && cd keel
 cp deploy/.env.example deploy/.env
-docker run --rm ghcr.io/evanl666/keel secret     # paste into KEEL_SECRET_KEY; also set POSTGRES_PASSWORD
-docker compose -f deploy/docker-compose.yml up -d
+docker build -t ghcr.io/evanl666/keel:latest .           # until the image is published
+docker run --rm ghcr.io/evanl666/keel:latest secret      # paste into KEEL_SECRET_KEY; also set POSTGRES_PASSWORD
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 open http://localhost:8420
 ```
 
@@ -195,7 +208,9 @@ uv sync --extra dev --extra all
 uv run pytest                                              # unit, API and gateway tests on SQLite
 KEEL_TEST_DATABASE_URL=postgresql+psycopg://... uv run pytest -m postgres
 KEEL_LIVE_PROVIDER=claude_code uv run pytest -m live      # real model calls
-cd web && npm ci && npm run dev                            # UI on :5173, proxies /api to :8420
+(cd web && npm ci && npm run dev)                          # UI on :5173, proxies /api to :8420
+(cd web && npm run dev:mock)                                # UI on mock data, no backend
+keel demo --port 8431 --fresh & node web/scripts/e2e-real.mjs /tmp/shots   # every page on the real backend
 ```
 
 License: Apache-2.0.
@@ -226,7 +241,8 @@ L0 观察 → L1 起草（每条都要人批）→ L2 协助（可在本团队�
 ### 快速开始
 
 ```bash
-pipx install keel-steward
+git clone https://github.com/evanl666/keel && cd keel
+(cd web && npm ci && npm run build) && uv tool install .   # v0.1 尚未发布到 PyPI，先从源码安装
 keel demo                       # 浏览器里打开一个三团队的示例公司，无需任何密钥
 keel checkup vercel/next.js     # 给真实仓库做体检，只读
 ```

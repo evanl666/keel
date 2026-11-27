@@ -76,6 +76,27 @@ def _text_of(payload: dict[str, typing.Any]) -> str:
     return "\n".join(str(v) for k, v in payload.items() if isinstance(v, str) and not k.startswith("_"))
 
 
+ROUTING_KEYS = frozenset({"channel", "repo", "to_team", "thread_ts", "issue", "priority", "service"})
+BODY_KEYS = ("text", "body", "detail")
+
+
+def _body_key(payload: dict[str, typing.Any]) -> str | None:
+    return next((k for k in BODY_KEYS if isinstance(payload.get(k), str)), None)
+
+
+def _preview_of(payload: dict[str, typing.Any]) -> str:
+    """What a person reads before approving: the message itself, never routing ids like a channel id."""
+    key = _body_key(payload)
+    if key is None:
+        return "\n".join(
+            str(v)
+            for k, v in payload.items()
+            if isinstance(v, str) and not k.startswith("_") and k not in ROUTING_KEYS
+        )
+    title = payload.get("title")
+    return f"{title}\n\n{payload[key]}" if isinstance(title, str) and title else payload[key]
+
+
 def _check_canaries(session: orm.Session, p: Proposal, steward: models.Steward) -> str | None:
     """Return a block line if the text carries a canary its audience may not see; trips it and demotes."""
     text = _text_of(p.payload)
@@ -83,31 +104,59 @@ def _check_canaries(session: orm.Session, p: Proposal, steward: models.Steward) 
         if canary.token not in text:
             continue
         same_team = canary.team_id == p.team.id
-        if same_team and labels.audience_allows(labels.audience_max_for_target(p.audience_kind), "restricted"):
+        if same_team and labels.audience_allows(
+            labels.audience_max_for_target(p.audience_kind), "restricted"
+        ):
             continue
         canary.tripped_at = models.utcnow()
-        levels.set_level(session, steward, min(steward.level, 1), "A leak canary appeared in outgoing text.", "keel")
+        levels.set_level(
+            session, steward, min(steward.level, 1), "A leak canary appeared in outgoing text.", "keel"
+        )
         steward.paused = True
         feed.CANARY_TRIPS.labels(team=p.team.slug).inc()
-        feed.audit(session, p.team.org_id, "keel", "canary.tripped", p.op_id, f"canary {canary.id}", p.team.id)
-        feed.activity(session, p.team.org_id, p.team.id, "level", "🚨",
-                      f"{steward.name} tried to send restricted text. Blocked, paused and moved to L1.", "/operations")
-        return (f"Blocked: this text contains a restricted marker from team knowledge. {steward.name} is paused "
-                "and back at L1 until someone checks.")
+        feed.audit(
+            session, p.team.org_id, "keel", "canary.tripped", p.op_id, f"canary {canary.id}", p.team.id
+        )
+        feed.activity(
+            session,
+            p.team.org_id,
+            p.team.id,
+            "level",
+            "🚨",
+            f"{steward.name} tried to send restricted text. Blocked, paused and moved to L1.",
+            "/operations",
+        )
+        return (
+            f"Blocked: this text contains a restricted marker from team knowledge. {steward.name} is paused "
+            "and back at L1 until someone checks."
+        )
     return None
 
 
 def propose(session: orm.Session, p: Proposal) -> models.Operation:
     """Record a write and decide: block, wait for approval, or queue for dispatch. Idempotent on op_id."""
-    existing = session.scalar(sa.select(models.Operation).where(models.Operation.org_id == p.team.org_id,
-                                                                models.Operation.op_id == p.op_id))
+    existing = session.scalar(
+        sa.select(models.Operation).where(
+            models.Operation.org_id == p.team.org_id, models.Operation.op_id == p.op_id
+        )
+    )
     if existing is not None:
         return existing
     steward = steward_for(session, p.team.id)
     op = models.Operation(
-        org_id=p.team.org_id, team_id=p.team.id, op_id=p.op_id, kind=p.kind, target=p.target, summary=p.summary[:500],
-        payload=p.payload, label=p.label, audience=p.audience, idempotent=p.idempotent, status="intent_recorded",
-        commitment_id=p.commitment.id if p.commitment else None, created_by=p.actor,
+        org_id=p.team.org_id,
+        team_id=p.team.id,
+        op_id=p.op_id,
+        kind=p.kind,
+        target=p.target,
+        summary=p.summary[:500],
+        payload=p.payload,
+        label=p.label,
+        audience=p.audience,
+        idempotent=p.idempotent,
+        status="intent_recorded",
+        commitment_id=p.commitment.id if p.commitment else None,
+        created_by=p.actor,
     )
     session.add(op)
     session.flush()
@@ -115,8 +164,10 @@ def propose(session: orm.Session, p: Proposal) -> models.Operation:
 
     block = _check_canaries(session, p, steward)
     if block is None and not labels.audience_allows(labels.audience_max_for_target(p.audience_kind), p.label):
-        block = (f"Blocked: the text is labeled {p.label}, and {p.audience or p.target} is only cleared for "
-                 f"{labels.audience_max_for_target(p.audience_kind)}.")
+        block = (
+            f"Blocked: the text is labeled {p.label}, and {p.audience or p.target} is only cleared for "
+            f"{labels.audience_max_for_target(p.audience_kind)}."
+        )
     if block is not None:
         op.status, op.error_class, op.error_line = "rejected", errors.BLOCKED, block
         feed.OPS_TOTAL.labels(kind=op.kind, status="blocked").inc()
@@ -133,51 +184,99 @@ def propose(session: orm.Session, p: Proposal) -> models.Operation:
         if steward.paused:
             reason = f"{steward.name} is paused, so everything waits for you."
         elif steward.level < need:
-            reason = (f"{steward.name} is at L{steward.level} {lvl.name}: this needs approval until "
-                      f"L{need} {levels.level_def(need).name}.")
+            reason = (
+                f"{steward.name} is at L{steward.level} {lvl.name}: this needs approval until "
+                f"L{need} {levels.level_def(need).name}."
+            )
     if reason is not None:
         op.status = "awaiting_approval"
         title = KIND_TITLES.get(p.kind, "{target}").format(target=p.target)
-        session.add(models.Approval(org_id=op.org_id, team_id=op.team_id, operation_id=op.id, title=title,
-                                    preview=p.preview or _text_of(p.payload), reason=reason))
-        feed.activity(session, op.org_id, op.team_id, "approval", "✋",
-                      f"{steward.name} drafted: {title}. It waits for you.", "/approvals")
+        session.add(
+            models.Approval(
+                org_id=op.org_id,
+                team_id=op.team_id,
+                operation_id=op.id,
+                title=title,
+                preview=p.preview or _preview_of(p.payload),
+                reason=reason,
+            )
+        )
+        feed.activity(
+            session,
+            op.org_id,
+            op.team_id,
+            "approval",
+            "✋",
+            f"{steward.name} drafted: {title}. It waits for you.",
+            "/approvals",
+        )
     else:
         _queue_dispatch(session, op)
-    feed.audit(session, op.org_id, p.actor, "operation.proposed", op.op_id, f"{op.kind} → {op.status}", op.team_id)
+    feed.audit(
+        session, op.org_id, p.actor, "operation.proposed", op.op_id, f"{op.kind} → {op.status}", op.team_id
+    )
     return op
 
 
 def _queue_dispatch(session: orm.Session, op: models.Operation, run_at: dt.datetime | None = None) -> None:
     op.status = "intent_recorded"
-    jobs.enqueue(session, op.org_id, "dispatch", {"op": op.id}, run_at=run_at,
-                 dedupe_key=f"dispatch:{op.id}:{op.attempts}")
+    jobs.enqueue(
+        session,
+        op.org_id,
+        "dispatch",
+        {"op": op.id},
+        run_at=run_at,
+        dedupe_key=f"dispatch:{op.id}:{op.attempts}",
+    )
 
 
-def approve(session: orm.Session, approval: models.Approval, user: models.User,
-            edited_preview: str | None = None) -> models.Approval:
+def approve(
+    session: orm.Session, approval: models.Approval, user: models.User, edited_preview: str | None = None
+) -> models.Approval:
     """Approve a draft (optionally edited). Records a promotion sample."""
     if approval.status != "pending":
         raise ValueError(f"This approval is already {approval.status}.")
     op = approval.operation
     edited = edited_preview is not None and edited_preview.strip() != approval.preview.strip()
     if edited:
-        key = "text" if "text" in op.payload else "body" if "body" in op.payload else None
+        key = _body_key(op.payload)
         if key is not None:
-            op.payload = {**op.payload, key: edited_preview}
+            new = dict(op.payload)
+            title, sep, rest = edited_preview.partition("\n\n")
+            if isinstance(new.get("title"), str) and new["title"] and sep:
+                new["title"], new[key] = title.strip(), rest
+            else:
+                new[key] = edited_preview
+            op.payload = new
         approval.preview = edited_preview or approval.preview
     approval.status, approval.decided_by, approval.decided_at = "approved", user.email, models.utcnow()
     steward = steward_for(session, op.team_id)
     levels.record_sample(session, steward, op.kind, "edited" if edited else "approved")
     _queue_dispatch(session, op)
-    feed.audit(session, op.org_id, f"user:{user.email}", "approval.approved", op.op_id,
-               "edited" if edited else "", op.team_id)
-    feed.activity(session, op.org_id, op.team_id, "approval", "👍", f"{user.name} approved: {approval.title}",
-                  "/operations")
+    feed.audit(
+        session,
+        op.org_id,
+        f"user:{user.email}",
+        "approval.approved",
+        op.op_id,
+        "edited" if edited else "",
+        op.team_id,
+    )
+    feed.activity(
+        session,
+        op.org_id,
+        op.team_id,
+        "approval",
+        "👍",
+        f"{user.name} approved: {approval.title}",
+        "/operations",
+    )
     return approval
 
 
-def reject(session: orm.Session, approval: models.Approval, user: models.User, reason: str = "") -> models.Approval:
+def reject(
+    session: orm.Session, approval: models.Approval, user: models.User, reason: str = ""
+) -> models.Approval:
     """Reject a draft. Records a sample; repeated rejections demote the steward."""
     if approval.status != "pending":
         raise ValueError(f"This approval is already {approval.status}.")
@@ -187,8 +286,15 @@ def reject(session: orm.Session, approval: models.Approval, user: models.User, r
     steward = steward_for(session, op.team_id)
     levels.record_sample(session, steward, op.kind, "rejected")
     feed.audit(session, op.org_id, f"user:{user.email}", "approval.rejected", op.op_id, reason, op.team_id)
-    feed.activity(session, op.org_id, op.team_id, "approval", "✋", f"{user.name} rejected: {approval.title}",
-                  "/approvals")
+    feed.activity(
+        session,
+        op.org_id,
+        op.team_id,
+        "approval",
+        "✋",
+        f"{user.name} rejected: {approval.title}",
+        "/approvals",
+    )
     return approval
 
 
@@ -219,16 +325,25 @@ def connector_for(session: orm.Session, op: models.Operation) -> base.Connector:
     if system in ("slack", "brief"):
         res = connections.resolve(session, op.org_id, "slack")
         if not res.configured:
-            raise errors.ConnectorError(errors.AUTH_INVALID, "Slack isn't connected. Connect it in Setup.", sent=False)
+            raise errors.ConnectorError(
+                errors.AUTH_INVALID, "Slack isn't connected. Connect it in Setup.", sent=False
+            )
         return slack.SlackConnector(res.secrets["bot_token"])
     if system == "github":
         res = connections.resolve(session, op.org_id, "github")
         if not res.configured:
-            raise errors.ConnectorError(errors.AUTH_INVALID, "GitHub isn't connected. Connect it in Setup.", sent=False)
-        return github.GitHubConnector(github.GitHubAuth(
-            token=res.secrets.get("token", ""), app_id=res.config.get("app_id", ""),
-            private_key=res.secrets.get("private_key", ""), installation_id=res.config.get("installation_id", ""),
-            api_url=res.config.get("api_url") or "https://api.github.com"))
+            raise errors.ConnectorError(
+                errors.AUTH_INVALID, "GitHub isn't connected. Connect it in Setup.", sent=False
+            )
+        return github.GitHubConnector(
+            github.GitHubAuth(
+                token=res.secrets.get("token", ""),
+                app_id=res.config.get("app_id", ""),
+                private_key=res.secrets.get("private_key", ""),
+                installation_id=res.config.get("installation_id", ""),
+                api_url=res.config.get("api_url") or "https://api.github.com",
+            )
+        )
     raise errors.ConnectorError(errors.BAD_REQUEST, f"No connector handles {op.kind}.", sent=False)
 
 
@@ -243,8 +358,14 @@ def dispatch(op_row_id: str) -> str:
         if op is None or op.status != "intent_recorded":
             return op.status if op else "missing"
         if op.next_attempt_at is not None and op.next_attempt_at > now:
-            jobs.enqueue(s, op.org_id, "dispatch", {"op": op.id}, run_at=op.next_attempt_at,
-                         dedupe_key=f"dispatch:{op.id}:{op.attempts}:wait")
+            jobs.enqueue(
+                s,
+                op.org_id,
+                "dispatch",
+                {"op": op.id},
+                run_at=op.next_attempt_at,
+                dedupe_key=f"dispatch:{op.id}:{op.attempts}:wait",
+            )
             return op.status
         op.status, op.attempts = "dispatching", op.attempts + 1
         op.lease_until = now + (RUNNER_LEASE if op.kind == "runbook.run" else DISPATCH_LEASE)
@@ -278,18 +399,38 @@ def _on_ack(s: orm.Session, op: models.Operation, remote_ref: str, how: str) -> 
 
             ledger.add_event(s, c, steward.name, "operation", f"{op.summary} ({how})")
     verb = "Sent" if how == "acked" else "Confirmed after a lost response"
-    feed.activity(s, op.org_id, op.team_id, "operation", "📨" if how == "acked" else "🔎",
-                  f"{verb}: {op.summary}", "/operations")
+    feed.activity(
+        s,
+        op.org_id,
+        op.team_id,
+        "operation",
+        "📨" if how == "acked" else "🔎",
+        f"{verb}: {op.summary}",
+        "/operations",
+    )
 
 
 def _on_error(s: orm.Session, op: models.Operation, exc: errors.ConnectorError) -> None:
     op.error_class, op.error_line, op.lease_until = exc.error_class, exc.line, None
     if exc.error_class == errors.UNKNOWN_OUTCOME:
         op.status = "unknown"
-        jobs.enqueue(s, op.org_id, "reconcile", {"op": op.id, "check": 1}, run_at=models.utcnow() + RECONCILE_DELAY,
-                     dedupe_key=f"reconcile:{op.id}:{op.attempts}:1")
-        feed.activity(s, op.org_id, op.team_id, "operation", "❔", f"Unclear if it went through: {op.summary}. Checking.",
-                      "/operations")
+        jobs.enqueue(
+            s,
+            op.org_id,
+            "reconcile",
+            {"op": op.id, "check": 1},
+            run_at=models.utcnow() + RECONCILE_DELAY,
+            dedupe_key=f"reconcile:{op.id}:{op.attempts}:1",
+        )
+        feed.activity(
+            s,
+            op.org_id,
+            op.team_id,
+            "operation",
+            "❔",
+            f"Unclear if it went through: {op.summary}. Checking.",
+            "/operations",
+        )
         return
     if exc.error_class in (errors.RATE_LIMITED, errors.UNREACHABLE) and op.attempts < MAX_DISPATCH_ATTEMPTS:
         op.next_attempt_at = models.utcnow() + dt.timedelta(seconds=exc.retry_after_s or 30)
@@ -299,7 +440,9 @@ def _on_error(s: orm.Session, op: models.Operation, exc: errors.ConnectorError) 
     feed.OPS_TOTAL.labels(kind=op.kind, status="failed").inc()
     if exc.error_class == errors.AUTH_INVALID:
         connections.mark(s, op.org_id, op.kind.split(".")[0], "error", exc.line)
-    feed.activity(s, op.org_id, op.team_id, "operation", "⚠️", f"Couldn't do it: {op.summary}. {exc.line}", "/operations")
+    feed.activity(
+        s, op.org_id, op.team_id, "operation", "⚠️", f"Couldn't do it: {op.summary}. {exc.line}", "/operations"
+    )
 
 
 def reconcile(op_row_id: str, check: int) -> str:
@@ -324,31 +467,52 @@ def reconcile(op_row_id: str, check: int) -> str:
             _queue_dispatch(s, op)
             return op.status
         if found.found is base.Found.UNSURE and checkable and check < MAX_RECONCILE_CHECKS:
-            jobs.enqueue(s, op.org_id, "reconcile", {"op": op.id, "check": check + 1},
-                         run_at=models.utcnow() + RECONCILE_DELAY * (2 ** check),
-                         dedupe_key=f"reconcile:{op.id}:{op.attempts}:{check + 1}")
+            jobs.enqueue(
+                s,
+                op.org_id,
+                "reconcile",
+                {"op": op.id, "check": check + 1},
+                run_at=models.utcnow() + RECONCILE_DELAY * (2**check),
+                dedupe_key=f"reconcile:{op.id}:{op.attempts}:{check + 1}",
+            )
             return op.status
         op.status = "needs_review"
-        op.error_line = (f"Keel couldn't tell if this went through. {found.line} "
-                         "Check, then mark it done or retry.").strip()
+        op.error_line = (
+            f"Keel couldn't tell if this went through. {found.line} Check, then mark it done or retry."
+        ).strip()
         feed.OPS_TOTAL.labels(kind=op.kind, status="needs_review").inc()
-        feed.activity(s, op.org_id, op.team_id, "operation", "🧐", f"Needs a look: {op.summary}", "/operations")
+        feed.activity(
+            s, op.org_id, op.team_id, "operation", "🧐", f"Needs a look: {op.summary}", "/operations"
+        )
         return op.status
 
 
 def runner_claim(session: orm.Session, runner_name: str) -> models.Operation | None:
     """Hand the oldest waiting runbook run to a runner. Each run is handed out once."""
-    q = (sa.select(models.Operation).where(models.Operation.kind == "runbook.run",
-                                           models.Operation.status == "dispatching",
-                                           models.Operation.remote_ref == "runner:pending")
-         .order_by(models.Operation.created_at).limit(1))
+    q = (
+        sa.select(models.Operation)
+        .where(
+            models.Operation.kind == "runbook.run",
+            models.Operation.status == "dispatching",
+            models.Operation.remote_ref == "runner:pending",
+        )
+        .order_by(models.Operation.created_at)
+        .limit(1)
+    )
     if db.is_postgres():
         q = q.with_for_update(skip_locked=True)
     op = session.scalar(q)
     if op is not None:
         op.remote_ref = f"runner:{runner_name}"
-        feed.activity(session, op.org_id, op.team_id, "operation", "🏃", f"Runner {runner_name} started: {op.summary}",
-                      "/operations")
+        feed.activity(
+            session,
+            op.org_id,
+            op.team_id,
+            "operation",
+            "🏃",
+            f"Runner {runner_name} started: {op.summary}",
+            "/operations",
+        )
     return op
 
 
@@ -361,7 +525,9 @@ def runner_report(session: orm.Session, op: models.Operation, ok: bool, output: 
         _on_ack(session, op, op.remote_ref or "runner", "acked")
         op.error_line = line or None
     else:
-        _on_error(session, op, errors.ConnectorError(errors.BAD_REQUEST, f"The command failed: {line}", sent=True))
+        _on_error(
+            session, op, errors.ConnectorError(errors.BAD_REQUEST, f"The command failed: {line}", sent=True)
+        )
     return op
 
 
@@ -370,14 +536,26 @@ def recover_stale(now: dt.datetime | None = None) -> int:
     now = now or models.utcnow()
     count = 0
     with db.session() as s:
-        stale = list(s.scalars(sa.select(models.Operation).where(models.Operation.status == "dispatching",
-                                                                 models.Operation.lease_until < now)))
+        stale = list(
+            s.scalars(
+                sa.select(models.Operation).where(
+                    models.Operation.status == "dispatching", models.Operation.lease_until < now
+                )
+            )
+        )
         for op in stale:
             op.status, op.error_class = "unknown", errors.UNKNOWN_OUTCOME
-            op.error_line = "Keel stopped hearing back while sending this, so it may have gone through. Checking first."
+            op.error_line = (
+                "Keel stopped hearing back while sending this, so it may have gone through. Checking first."
+            )
             op.lease_until = None
-            jobs.enqueue(s, op.org_id, "reconcile", {"op": op.id, "check": 1},
-                         dedupe_key=f"reconcile:{op.id}:{op.attempts}:1")
+            jobs.enqueue(
+                s,
+                op.org_id,
+                "reconcile",
+                {"op": op.id, "check": 1},
+                dedupe_key=f"reconcile:{op.id}:{op.attempts}:1",
+            )
             count += 1
     return count
 

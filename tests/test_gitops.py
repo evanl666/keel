@@ -27,8 +27,10 @@ def _apply(path: pathlib.Path, dry_run: bool = False) -> list[tuple[str, str]]:
 
 def _counts() -> tuple[int, int, int]:
     with db.session() as s:
-        return tuple(s.scalar(sa.select(sa.func.count()).select_from(m)) for m in
-                     (models.Team, models.Service, models.KnowledgeDoc))
+        return tuple(
+            s.scalar(sa.select(sa.func.count()).select_from(m))
+            for m in (models.Team, models.Service, models.KnowledgeDoc)
+        )
 
 
 def test_dry_run_changes_nothing(plan_path: pathlib.Path) -> None:

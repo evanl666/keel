@@ -28,17 +28,29 @@ Kind = typing.Literal["request", "promise", "question", "update", "incident", "c
 class Triage(pydantic.BaseModel):
     """What a team message means for the ledger."""
 
-    kind: Kind = pydantic.Field(description="request: someone asks for work; promise: someone commits to work; "
-                                            "question: wants information; update: status of existing work; "
-                                            "incident: something is broken now; chatter: none of these")
-    title: str | None = pydantic.Field(default=None, description="Short imperative title of the work, max 80 chars")
+    kind: Kind = pydantic.Field(
+        description="request: someone asks for work; promise: someone commits to work; "
+        "question: wants information; update: status of existing work; "
+        "incident: something is broken now; chatter: none of these"
+    )
+    title: str | None = pydantic.Field(
+        default=None, description="Short imperative title of the work, max 80 chars"
+    )
     owner_person: str | None = pydantic.Field(default=None, description="Who will do it, if stated")
-    due: str | None = pydantic.Field(default=None, description="Due date as YYYY-MM-DD if stated or clearly implied")
+    due: str | None = pydantic.Field(
+        default=None, description="Due date as YYYY-MM-DD if stated or clearly implied"
+    )
     priority: typing.Literal["low", "normal", "high", "urgent"] = "normal"
-    for_team: str | None = pydantic.Field(default=None, description="Slug of another team that should do it, if any")
-    commitment_key: str | None = pydantic.Field(default=None, description="Existing key like C-88 the message is about")
+    for_team: str | None = pydantic.Field(
+        default=None, description="Slug of another team that should do it, if any"
+    )
+    commitment_key: str | None = pydantic.Field(
+        default=None, description="Existing key like C-88 the message is about"
+    )
     new_status: typing.Literal["accepted", "in_progress", "blocked", "done", "dropped"] | None = None
-    reply: str | None = pydantic.Field(default=None, description="One or two short, calm sentences to reply with")
+    reply: str | None = pydantic.Field(
+        default=None, description="One or two short, calm sentences to reply with"
+    )
 
 
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -90,24 +102,54 @@ def parse_due(text: str, now: dt.datetime, tz: str = "UTC") -> dt.datetime | Non
     return None
 
 
-REQUEST_RE = re.compile(r"\b(can|could|would) (you|someone|somebody|we|y'all|your team)\b|\bplease\b|\bneed(s|ed)? (you|someone|this|a|an|the)\b|\bask(ing)? (you|for)\b", re.IGNORECASE)
-PROMISE_RE = re.compile(r"\b(i'll|i will|i can take|i'm on it|on it\b|will do|we'll|we will|i'll take|let me (take|handle|do))", re.IGNORECASE)
-UPDATE_RE = re.compile(r"\b(C-\d+)\b.*\b(done|shipped|merged|finished|blocked|stuck|started|in progress|dropped|cancel+ed)\b", re.IGNORECASE)
-INCIDENT_RE = re.compile(r"\b(is down|outage|5\d\d errors?|error rate|paging|sev ?[12]|incident|broken in prod)\b", re.IGNORECASE)
+REQUEST_RE = re.compile(
+    r"\b(can|could|would) (you|someone|somebody|we|y'all|your team)\b|\bplease\b|\bneed(s|ed)? (you|someone|this|a|an|the)\b|\bask(ing)? (you|for)\b",
+    re.IGNORECASE,
+)
+PROMISE_RE = re.compile(
+    r"\b(i'll|i will|i can take|i'm on it|on it\b|will do|we'll|we will|i'll take|let me (take|handle|do))",
+    re.IGNORECASE,
+)
+UPDATE_RE = re.compile(
+    r"\b(C-\d+)\b.*\b(done|shipped|merged|finished|blocked|stuck|started|in progress|dropped|cancel+ed)\b",
+    re.IGNORECASE,
+)
+INCIDENT_RE = re.compile(
+    r"\b(is down|outage|5\d\d errors?|error rate|paging|sev ?[12]|incident|broken in prod)\b", re.IGNORECASE
+)
 QUESTION_RE = re.compile(r"\?\s*$|^(who|what|where|when|why|how|is|are|does|do|can)\b", re.IGNORECASE)
-STATUS_WORDS = {"done": "done", "shipped": "done", "merged": "done", "finished": "done", "blocked": "blocked",
-                "stuck": "blocked", "started": "in_progress", "in progress": "in_progress", "dropped": "dropped",
-                "cancelled": "dropped", "canceled": "dropped"}
+STATUS_WORDS = {
+    "done": "done",
+    "shipped": "done",
+    "merged": "done",
+    "finished": "done",
+    "blocked": "blocked",
+    "stuck": "blocked",
+    "started": "in_progress",
+    "in progress": "in_progress",
+    "dropped": "dropped",
+    "cancelled": "dropped",
+    "canceled": "dropped",
+}
 
 
 def _title_from(text: str) -> str:
     t = re.sub(r"<@[A-Z0-9]+>|^(@[\w.\-]+[,:]?\s*)+", "", text.strip()).strip()
     t = re.sub(r"^(hey|hi|hello)\b[^,]*,?\s*", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"^(can|could|would) (you|someone|somebody|your team)( please)?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(
+        r"^(can|could|would) (you|someone|somebody|your team)( please)?\s*", "", t, flags=re.IGNORECASE
+    )
     t = re.sub(r"^(please|i'll|i will|we'll|we will)\s+", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"\s*\b(by|before|until|on) (today|tomorrow|eod|end of (the )?(day|week)|next week|"
-               r"(mon|tues|wednes|thurs|fri|satur|sun)day|\w+ \d{1,2}|20\d\d-\d\d-\d\d)\b.*$", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"\s*\b(today|tonight|tomorrow|eod|asap|next week|this week)\b[.!?]*$", "", t, flags=re.IGNORECASE)
+    t = re.sub(
+        r"\s*\b(by|before|until|on) (today|tomorrow|eod|end of (the )?(day|week)|next week|"
+        r"(mon|tues|wednes|thurs|fri|satur|sun)day|\w+ \d{1,2}|20\d\d-\d\d-\d\d)\b.*$",
+        "",
+        t,
+        flags=re.IGNORECASE,
+    )
+    t = re.sub(
+        r"\s*\b(today|tonight|tomorrow|eod|asap|next week|this week)\b[.!?]*$", "", t, flags=re.IGNORECASE
+    )
     t = t.rstrip(" ?.!")
     return (t[:1].upper() + t[1:])[:80] if t else "Follow up"
 
@@ -116,25 +158,53 @@ def rule_triage(text: str, now: dt.datetime, tz: str = "UTC", team_slugs: tuple[
     """Classify a message with regular expressions. Used without a model and as the fallback."""
     due = parse_due(text, now, tz)
     due_s = due.astimezone(zoneinfo.ZoneInfo(tz)).date().isoformat() if due else None
-    for_team = next((s for s in team_slugs if re.search(rf"(@|#|\b){re.escape(s)}\b", text, re.IGNORECASE)), None)
+    for_team = next(
+        (s for s in team_slugs if re.search(rf"(@|#|\b){re.escape(s)}\b", text, re.IGNORECASE)), None
+    )
     if m := UPDATE_RE.search(text):
         word = m[2].lower()
-        return Triage(kind="update", commitment_key=m[1].upper(), new_status=STATUS_WORDS.get(word, "in_progress"),
-                      reply=f"Noted: {m[1].upper()} is {STATUS_WORDS.get(word, 'in_progress').replace('_', ' ')}.")
+        return Triage(
+            kind="update",
+            commitment_key=m[1].upper(),
+            new_status=STATUS_WORDS.get(word, "in_progress"),
+            reply=f"Noted: {m[1].upper()} is {STATUS_WORDS.get(word, 'in_progress').replace('_', ' ')}.",
+        )
     if INCIDENT_RE.search(text):
-        return Triage(kind="incident", title=_title_from(text), priority="urgent",
-                      reply="Logged as urgent. I'll keep the thread updated.")
+        return Triage(
+            kind="incident",
+            title=_title_from(text),
+            priority="urgent",
+            reply="Logged as urgent. I'll keep the thread updated.",
+        )
     if PROMISE_RE.search(text):
-        return Triage(kind="promise", title=_title_from(text), due=due_s,
-                      reply="Logged it" + (f", due {due_s}." if due_s else ". When should it be done?"))
+        return Triage(
+            kind="promise",
+            title=_title_from(text),
+            due=due_s,
+            reply="Logged it" + (f", due {due_s}." if due_s else ". When should it be done?"),
+        )
     asks_team = for_team is not None and re.search(
-        rf"\b(can|could|would)\s+(the\s+)?[@#]?{re.escape(for_team)}(\s+team)?\b", text, re.IGNORECASE)
+        rf"\b(can|could|would)\s+(the\s+)?[@#]?{re.escape(for_team)}(\s+team)?\b", text, re.IGNORECASE
+    )
     if REQUEST_RE.search(text) or asks_team:
-        title = _title_from(re.sub(rf"^(can|could|would)\s+(the\s+)?[@#]?{re.escape(for_team)}(\s+team)?\s+(please\s+)?",
-                                   "", text.strip(), flags=re.IGNORECASE) if asks_team else text)
-        return Triage(kind="request", title=title, due=due_s, for_team=for_team,
-                      priority="high" if re.search(r"\b(urgent|asap|blocker)\b", text, re.IGNORECASE) else "normal",
-                      reply="Logged the request" + (f", due {due_s}." if due_s else ". Who can take it?"))
+        title = _title_from(
+            re.sub(
+                rf"^(can|could|would)\s+(the\s+)?[@#]?{re.escape(for_team)}(\s+team)?\s+(please\s+)?",
+                "",
+                text.strip(),
+                flags=re.IGNORECASE,
+            )
+            if asks_team
+            else text
+        )
+        return Triage(
+            kind="request",
+            title=title,
+            due=due_s,
+            for_team=for_team,
+            priority="high" if re.search(r"\b(urgent|asap|blocker)\b", text, re.IGNORECASE) else "normal",
+            reply="Logged the request" + (f", due {due_s}." if due_s else ". Who can take it?"),
+        )
     if QUESTION_RE.search(text.strip()):
         return Triage(kind="question")
     return Triage(kind="chatter")
@@ -147,18 +217,34 @@ Be conservative: chatter and thanks are "chatter". Only use "request" or "promis
 commits to concrete work. Resolve relative dates ("Friday") to YYYY-MM-DD. Keep replies short and calm, no emoji."""
 
 
-def triage(model: language_models.BaseChatModel | None, text: str, *, steward: str, team: str, now: dt.datetime,
-           tz: str = "UTC", team_slugs: tuple[str, ...] = (), open_keys: tuple[str, ...] = ()) -> Triage:
+def triage(
+    model: language_models.BaseChatModel | None,
+    text: str,
+    *,
+    steward: str,
+    team: str,
+    now: dt.datetime,
+    tz: str = "UTC",
+    team_slugs: tuple[str, ...] = (),
+    open_keys: tuple[str, ...] = (),
+) -> Triage:
     """Classify with the model; fall back to rules if there is no model or the call fails."""
     if model is None:
         return rule_triage(text, now, tz, team_slugs)
     local = now.astimezone(zoneinfo.ZoneInfo(tz))
-    prompt = TRIAGE_PROMPT.format(steward=steward, team=team, today=local.date().isoformat(),
-                                  weekday=local.strftime("%A"), tz=tz, teams=", ".join(team_slugs) or "none",
-                                  open_keys=", ".join(open_keys[:40]) or "none")
+    prompt = TRIAGE_PROMPT.format(
+        steward=steward,
+        team=team,
+        today=local.date().isoformat(),
+        weekday=local.strftime("%A"),
+        tz=tz,
+        teams=", ".join(team_slugs) or "none",
+        open_keys=", ".join(open_keys[:40]) or "none",
+    )
     try:
         result = model.with_structured_output(Triage).invoke(
-            [{"role": "system", "content": prompt}, {"role": "user", "content": text}])
+            [{"role": "system", "content": prompt}, {"role": "user", "content": text}]
+        )
         feed.MODEL_CALLS.labels(purpose="triage", outcome="ok").inc()
         return typing.cast(Triage, result)
     except Exception as exc:
@@ -176,11 +262,17 @@ Passages:
 {passages}"""
 
 
-def answer(model: language_models.BaseChatModel | None, question: str, found: knowledge.SearchResult, *,
-           steward: str, team: str) -> str:
+def answer(
+    model: language_models.BaseChatModel | None,
+    question: str,
+    found: knowledge.SearchResult,
+    *,
+    steward: str,
+    team: str,
+) -> str:
     """Answer a question from visible passages only."""
     if not found.passages:
-        return (f"I don't have anything on that in {team}'s notes yet. I can log the question for the team.")
+        return f"I don't have anything on that in {team}'s notes yet. I can log the question for the team."
     if model is None:
         best = found.passages[0]
         snippet = best.text.strip().replace("\n", " ")
@@ -189,8 +281,12 @@ def answer(model: language_models.BaseChatModel | None, question: str, found: kn
         return f"From [{best.title}]: {snippet}"
     ctx = "\n\n".join(f"[{p.title}] (label: {p.label})\n{p.text}" for p in found.passages)
     try:
-        reply = model.invoke([{"role": "system", "content": ANSWER_PROMPT.format(steward=steward, team=team, passages=ctx)},
-                              {"role": "user", "content": question}])
+        reply = model.invoke(
+            [
+                {"role": "system", "content": ANSWER_PROMPT.format(steward=steward, team=team, passages=ctx)},
+                {"role": "user", "content": question},
+            ]
+        )
         feed.MODEL_CALLS.labels(purpose="answer", outcome="ok").inc()
         return str(reply.content).strip()
     except Exception as exc:
@@ -205,9 +301,11 @@ fluff, no facts beyond the JSON. Facts:
 {facts}"""
 
 
-def headline(model: language_models.BaseChatModel | None, facts: dict[str, typing.Any], *, steward: str,
-             team: str) -> str:
+def headline(
+    model: language_models.BaseChatModel | None, facts: dict[str, typing.Any], *, steward: str, team: str
+) -> str:
     """One or two sentences opening a brief. Facts come from the database, never from the model."""
+
     def rules() -> str:
         overdue, at_risk, needs = facts.get("overdue", 0), facts.get("at_risk", 0), facts.get("needs_you", 0)
         down = facts.get("services_down", [])
@@ -223,10 +321,13 @@ def headline(model: language_models.BaseChatModel | None, facts: dict[str, typin
                 parts.append(f"{needs} waiting on you")
             return f"A steady day: {' and '.join(parts)}."
         return "All quiet. Nothing is overdue or at risk."
+
     if model is None:
         return rules()
     try:
-        reply = model.invoke(HEADLINE_PROMPT.format(steward=steward, team=team, facts=json.dumps(facts, default=str)))
+        reply = model.invoke(
+            HEADLINE_PROMPT.format(steward=steward, team=team, facts=json.dumps(facts, default=str))
+        )
         feed.MODEL_CALLS.labels(purpose="headline", outcome="ok").inc()
         return str(reply.content).strip()
     except Exception as exc:

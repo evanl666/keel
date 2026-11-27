@@ -19,7 +19,9 @@ _fernet: fernet.Fernet | None = None
 def _box() -> fernet.Fernet:
     global _fernet
     if _fernet is None:
-        raw = hashlib.pbkdf2_hmac("sha256", config.get().effective_secret_key().encode(), KDF_SALT, KDF_ITERATIONS)
+        raw = hashlib.pbkdf2_hmac(
+            "sha256", config.get().effective_secret_key().encode(), KDF_SALT, KDF_ITERATIONS
+        )
         _fernet = fernet.Fernet(base64.urlsafe_b64encode(raw))
     return _fernet
 

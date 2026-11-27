@@ -381,7 +381,9 @@ class Activity(Base):
     """Human-readable feed. Integer id doubles as the SSE cursor."""
 
     __tablename__ = "activity"
-    id: orm.Mapped[int] = orm.mapped_column(sa.BigInteger().with_variant(sa.Integer, "sqlite"), primary_key=True)
+    id: orm.Mapped[int] = orm.mapped_column(
+        sa.BigInteger().with_variant(sa.Integer, "sqlite"), primary_key=True
+    )
     org_id: orm.Mapped[str] = org_fk()
     team_id: orm.Mapped[str | None] = team_fk(nullable=True)
     at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
