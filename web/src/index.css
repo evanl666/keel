@@ -1,0 +1,313 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --t-gray: #6b7280;
+  --t-red: #dc2626;
+  --t-amber: #b45309;
+  --t-violet: #7c3aed;
+  --t-indigo: #4f5bd5;
+  --t-blue: #2563eb;
+  --t-orange: #c2410c;
+  --t-green2: #16a34a;
+  --t-yellow: #a16207;
+  --t-sky: #0284c7;
+  --t-green: #059669;
+  --lv0: #6b7280;
+  --lv1: #2563eb;
+  --lv2: #7c3aed;
+  --lv3: #059669;
+  --lv4: #d97706;
+  --bg: #f6f7f9;
+  --bg-grad-1: rgba(110, 124, 255, 0.07);
+  --bg-grad-2: rgba(16, 185, 129, 0.04);
+  --panel: #ffffff;
+  --panel-2: #fafbfc;
+  --sunken: #f1f2f5;
+  --hover: rgba(15, 18, 30, 0.04);
+  --line: rgba(15, 18, 30, 0.09);
+  --line-strong: rgba(15, 18, 30, 0.16);
+  --fg: #0e1016;
+  --muted: #555b67;
+  --faint: #868c97;
+  --accent: #5b6cff;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(91, 108, 255, 0.1);
+  --ok: #16a34a;
+  --warn: #d97706;
+  --bad: #dc2626;
+  --info: #2563eb;
+  --shadow-sm: 0 1px 2px rgba(16, 20, 40, 0.05);
+  --shadow: 0 1px 2px rgba(16, 20, 40, 0.04), 0 4px 16px -4px rgba(16, 20, 40, 0.08);
+  --shadow-lg: 0 2px 6px rgba(16, 20, 40, 0.06), 0 24px 48px -12px rgba(16, 20, 40, 0.18);
+  --kbd-bg: linear-gradient(#ffffff, #f0f1f4);
+  color-scheme: light;
+}
+
+.dark {
+  --t-gray: #8a919e;
+  --t-red: #f87171;
+  --t-amber: #f59e0b;
+  --t-violet: #a78bfa;
+  --t-indigo: #7b88ff;
+  --t-blue: #60a5fa;
+  --t-orange: #fb923c;
+  --t-green2: #22c55e;
+  --t-yellow: #f5b83d;
+  --t-sky: #38bdf8;
+  --t-green: #34d399;
+  --lv0: #8a919e;
+  --lv1: #60a5fa;
+  --lv2: #a78bfa;
+  --lv3: #34d399;
+  --lv4: #f59e0b;
+  --bg: #08090c;
+  --bg-grad-1: rgba(110, 124, 255, 0.09);
+  --bg-grad-2: rgba(16, 185, 129, 0.035);
+  --panel: #0f1115;
+  --panel-2: #12151a;
+  --sunken: #0b0c10;
+  --hover: rgba(255, 255, 255, 0.045);
+  --line: rgba(255, 255, 255, 0.075);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --fg: #eceef2;
+  --muted: #a1a7b3;
+  --faint: #6c727e;
+  --accent: #7b88ff;
+  --accent-fg: #0b0d14;
+  --accent-soft: rgba(123, 136, 255, 0.14);
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --info: #60a5fa;
+  --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 30px 60px -12px rgba(0, 0, 0, 0.7);
+  --kbd-bg: linear-gradient(#22252c, #191b21);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-sunken: var(--sunken);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-info: var(--info);
+  --shadow-card: var(--shadow);
+  --shadow-soft: var(--shadow-sm);
+  --shadow-pop: var(--shadow-lg);
+  --font-sans: "Inter var", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01", "ss03", "calt";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-bg {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, var(--bg-grad-1), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, var(--bg-grad-2), transparent 60%),
+    var(--bg);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+@layer base {
+  :where(a, button, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Steward "breathing" ring */
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.14);
+    opacity: 0;
+  }
+}
+.breathe::before,
+.breathe::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 2px solid var(--ring, var(--accent));
+  animation: breathe 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+.breathe::after {
+  animation-delay: 1.6s;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.flow {
+  stroke-dasharray: 4 8;
+  animation: dash 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--hover);
+  border-radius: 8px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--hover), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 50%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 0%, transparent);
+  }
+}
+.live-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Markdown (briefs, chat) */
+.prose-keel {
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.prose-keel > * + * {
+  margin-top: 0.7em;
+}
+.prose-keel h1,
+.prose-keel h2,
+.prose-keel h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 1.3em;
+}
+.prose-keel h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.prose-keel > h3:first-child {
+  margin-top: 0;
+}
+.prose-keel ul {
+  padding-left: 1.1em;
+  list-style: disc;
+}
+.prose-keel ol {
+  padding-left: 1.3em;
+  list-style: decimal;
+}
+.prose-keel li + li {
+  margin-top: 0.3em;
+}
+.prose-keel li::marker {
+  color: var(--faint);
+}
+.prose-keel strong {
+  font-weight: 600;
+}
+.prose-keel em {
+  color: var(--warn);
+  font-style: normal;
+}
+.prose-keel blockquote {
+  border-left: 2px solid var(--accent);
+  padding: 0.4em 0.9em;
+  color: var(--muted);
+  background: var(--accent-soft);
+  border-radius: 0 8px 8px 0;
+}
+.prose-keel code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--hover);
+  padding: 0.1em 0.35em;
+  border-radius: 5px;
+}
+.prose-keel a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-keel.compact {
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.prose-keel.compact > * + * {
+  margin-top: 0.5em;
+}
+.prose-keel.compact h1,
+.prose-keel.compact h2,
+.prose-keel.compact h3 {
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  margin-top: 0.6em;
+}
+.prose-keel.compact > :first-child {
+  margin-top: 0;
+}
