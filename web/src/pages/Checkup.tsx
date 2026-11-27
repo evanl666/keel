@@ -63,16 +63,16 @@ function Running({ r }: { r: CheckupReport }) {
   }, [r.created_at]);
   const step = Math.min(STEPS.length - 1, Math.floor(t / 1100));
   return (
-    <Card className="p-8 overflow-hidden" glow="rgba(123,136,255,0.12)">
-      <div className="flex items-center gap-8">
+    <Card className="p-5 sm:p-8 overflow-hidden" glow="rgba(123,136,255,0.12)">
+      <div className="flex flex-col sm:flex-row items-center sm:items-center gap-6 sm:gap-8">
         <div className="relative size-[132px] grid place-items-center shrink-0">
           <motion.div className="absolute inset-0 rounded-full border-2 border-accent/25 border-t-accent" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.4, ease: "linear" }} />
           <motion.div className="absolute inset-3 rounded-full border border-accent/15 border-b-accent/60" animate={{ rotate: -360 }} transition={{ repeat: Infinity, duration: 2.6, ease: "linear" }} />
           <Stethoscope className="size-9 text-accent" />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-sm:w-full">
           <div className="text-[13px] text-faint font-mono flex items-center gap-1.5">
-            <GitBranch className="size-3.5" />
+            <GitBranch className="size-3.5 shrink-0" />
             {r.repo}
           </div>
           <div className="text-[20px] font-semibold tracking-[-0.02em] mt-1">Taking a look…</div>
@@ -99,7 +99,7 @@ function Report({ r }: { r: CheckupReport }) {
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
       <Card className="overflow-hidden">
-        <div className="relative px-8 py-7 flex items-center gap-8 border-b border-line" style={{ backgroundImage: `radial-gradient(70% 140% at 0% 0%, color-mix(in srgb, ${color} 16%, transparent), transparent 60%)` }}>
+        <div className="relative px-5 py-6 sm:px-8 sm:py-7 flex flex-col sm:flex-row items-start sm:items-center gap-5 sm:gap-8 border-b border-line" style={{ backgroundImage: `radial-gradient(70% 140% at 0% 0%, color-mix(in srgb, ${color} 16%, transparent), transparent 60%)` }}>
           <Ring value={score} size={136} stroke={8} color={color}>
             <div className="text-center">
               <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 16, delay: 0.25 }} className="text-[52px] leading-none font-bold tracking-[-0.04em]" style={{ color }}>
@@ -114,7 +114,7 @@ function Report({ r }: { r: CheckupReport }) {
               {r.repo}
               <ExternalLink className="size-3" />
             </a>
-            <div className="text-[22px] font-semibold tracking-[-0.02em] mt-1 leading-tight">{verdict(score)}</div>
+            <div className="text-[20px] sm:text-[22px] font-semibold tracking-[-0.02em] mt-1 leading-tight">{verdict(score)}</div>
             <div className="mt-3 flex items-center gap-2 flex-wrap">
               {groups.map((g) => (
                 <span key={g.s} className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[12px] font-medium border" style={{ color: SEV[g.s].color, borderColor: `color-mix(in srgb, ${SEV[g.s].color} 30%, transparent)`, background: `color-mix(in srgb, ${SEV[g.s].color} 10%, transparent)` }}>
@@ -126,21 +126,21 @@ function Report({ r }: { r: CheckupReport }) {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-3 md:grid-cols-5 border-b border-line">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 border-b border-line">
           {Object.entries(r.stats).filter(([k]) => k !== "not_checked").map(([k, v], i) => (
-            <motion.div key={k} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }} className="px-5 py-4 border-r border-t border-line -mt-px">
+            <motion.div key={k} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }} className="min-w-0 px-4 sm:px-5 py-4 border-r border-t border-line -mt-px">
               <div className="text-[11px] uppercase tracking-[0.06em] text-faint whitespace-nowrap truncate">{statLabel(k)}</div>
               <div className="text-[20px] font-semibold tabular tracking-[-0.02em] mt-1">{statValue(k, v)}</div>
             </motion.div>
           ))}
         </div>
         {r.stats.not_checked ? (
-          <div className="px-6 pt-4 text-[12.5px] text-faint">Not checked: {String(r.stats.not_checked)}</div>
+          <div className="px-4 sm:px-6 pt-4 text-[12.5px] text-faint">Not checked: {String(r.stats.not_checked)}</div>
         ) : null}
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-6">
           {groups.map((g, gi) => (
             <div key={g.s}>
-              <div className="flex items-baseline gap-2 mb-2.5">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-2.5">
                 <span className="text-[13px] font-semibold" style={{ color: SEV[g.s].color }}>
                   {SEV[g.s].label}
                 </span>
@@ -165,7 +165,7 @@ function Report({ r }: { r: CheckupReport }) {
             </div>
           ))}
         </div>
-        <div className="px-6 py-4 border-t border-line bg-sunken/50 flex items-center gap-3">
+        <div className="px-4 sm:px-6 py-4 border-t border-line bg-sunken/50 flex items-center gap-3">
           <span className="text-[20px]">🦉</span>
           <div className="text-[13px] text-muted flex-1">A steward would turn the untracked promises into ledger entries and nudge owners before they slip.</div>
         </div>
@@ -208,14 +208,14 @@ export function Checkup() {
   return (
     <div>
       <Card className="overflow-hidden mb-6" glow="rgba(123,136,255,0.14)">
-        <div className="px-8 pt-8 pb-7">
+        <div className="px-5 pt-6 pb-6 sm:px-8 sm:pt-8 sm:pb-7">
           <div className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full border border-accent/30 bg-accent-soft text-accent text-[11.5px] font-medium">
             <Stethoscope className="size-3.5" /> Team checkup
           </div>
-          <h1 className="mt-3 text-[28px] font-semibold tracking-[-0.03em] leading-tight">How is your team really doing?</h1>
+          <h1 className="mt-3 text-[24px] sm:text-[28px] font-semibold tracking-[-0.03em] leading-tight">How is your team really doing?</h1>
           <p className="mt-1.5 text-[14px] text-muted max-w-xl">Point Keel at a GitHub repo. In under a minute you'll see the promises nobody tracks, the reviews that wait, and what a steward would fix first. Read-only.</p>
           <form
-            className="mt-5 flex items-center gap-2 max-w-xl"
+            className="mt-5 flex flex-col sm:flex-row sm:items-center gap-2 max-w-xl"
             onSubmit={(e) => {
               e.preventDefault();
               submit();
@@ -237,7 +237,7 @@ export function Checkup() {
                 <button
                   key={c.id}
                   onClick={() => setParams({ id: c.id })}
-                  className={cn("inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg border font-mono text-[12px] cursor-pointer transition-colors", c.id === id ? "border-accent/50 bg-accent-soft text-fg" : "border-line bg-panel text-muted hover:text-fg hover:border-line-strong")}
+                  className={cn("inline-flex items-center gap-1.5 h-7 max-sm:h-10 max-sm:px-3 px-2.5 rounded-lg border font-mono text-[12px] cursor-pointer transition-colors", c.id === id ? "border-accent/50 bg-accent-soft text-fg" : "border-line bg-panel text-muted hover:text-fg hover:border-line-strong")}
                 >
                   {c.status === "running" ? <Loader2 className="size-3 animate-spin text-accent" /> : c.status === "failed" ? <span className="size-1.5 rounded-full bg-bad" /> : <span className="font-sans font-bold text-[12px]" style={{ color: gradeColor(c.grade) }}>{c.grade}</span>}
                   {c.repo}
@@ -268,7 +268,7 @@ export function Checkup() {
             )}
           </motion.div>
         ) : (
-          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-3 gap-4">
+          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
             {[
               { e: "🤝", t: "Untracked promises", l: "\"I'll take this\" in issues and PRs, with no date or owner." },
               { e: "⏳", t: "Waiting work", l: "Reviews and questions that sit for days." },

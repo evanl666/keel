@@ -2,6 +2,13 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Phone-size screens and touch-only devices: hide keyboard hints there. */
+@custom-variant touch {
+  @media (max-width: 767.98px), (hover: none) and (pointer: coarse) {
+    @slot;
+  }
+}
+
 :root {
   --t-gray: #6b7280;
   --t-red: #dc2626;
@@ -156,6 +163,17 @@ body {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Horizontal scrollers (tabs, steppers, boards) on small screens: no visible bar. */
+@utility scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Steward "breathing" ring */

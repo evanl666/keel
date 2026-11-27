@@ -37,8 +37,8 @@ export function TodayTab({ t }: { t: TeamDetail }) {
   const activity = mergeActivity(t.activity, stream.items, t.slug);
 
   return (
-    <div className="grid grid-cols-12 gap-5">
-      <div className="col-span-8 min-w-0 space-y-5">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
+      <div className="lg:col-span-8 min-w-0 space-y-5">
         <Card>
           <CardHeader
             title={
@@ -59,7 +59,7 @@ export function TodayTab({ t }: { t: TeamDetail }) {
               </>
             }
           />
-          <div className="px-6 pb-6 pt-1">
+          <div className="px-4 pb-5 sm:px-6 sm:pb-6 pt-1">
             {brief ? (
               <Markdown>{brief.markdown}</Markdown>
             ) : briefs ? (
@@ -80,19 +80,19 @@ export function TodayTab({ t }: { t: TeamDetail }) {
               <button
                 key={b.id}
                 onClick={() => setSel(b.id)}
-                className={cn("w-full flex items-center gap-3 h-9 px-3 rounded-lg text-left text-[13px] cursor-pointer transition-colors", b.id === brief?.id ? "bg-hover text-fg" : "text-muted hover:bg-hover/60")}
+                className={cn("w-full flex items-center gap-3 h-10 lg:h-9 px-3 rounded-lg text-left text-[13px] cursor-pointer transition-colors", b.id === brief?.id ? "bg-hover text-fg" : "text-muted hover:bg-hover/60")}
               >
                 <span className="text-[13px]">{b.kind === "weekly" ? "🗓️" : b.kind === "checkup" ? "🩺" : "☀️"}</span>
                 <span className="flex-1 truncate">{b.title}</span>
-                <span className="text-[12px] text-faint">{ago(b.created_at)}</span>
+                <span className="shrink-0 text-[12px] text-faint">{ago(b.created_at)}</span>
               </button>
             ))}
           </Card>
         )}
       </div>
-      <div className="col-span-4 space-y-5">
+      <div className="contents lg:block lg:col-span-4 lg:space-y-5">
         {mine.length > 0 && (
-          <Card className="p-4 border-accent/30" glow="rgba(123,136,255,0.1)">
+          <Card className="p-4 border-accent/30 max-lg:order-first" glow="rgba(123,136,255,0.1)">
             <div className="text-[13px] font-semibold">
               {mine.length} {mine.length === 1 ? "draft waits" : "drafts wait"} for you
             </div>

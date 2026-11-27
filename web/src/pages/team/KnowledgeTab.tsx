@@ -38,14 +38,14 @@ export function KnowledgeTab({ t }: { t: TeamDetail }) {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4">
         <Segmented
           size="sm"
           value={lf}
           onChange={setLf}
           options={(["all", "public", "internal", "confidential", "restricted"] as LF[]).map((v) => ({ value: v, label: v === "all" ? "All" : v[0].toUpperCase() + v.slice(1), count: counts[v] ?? 0 }))}
         />
-        <div className="relative ml-auto w-[240px]">
+        <div className="relative min-w-0 flex-1 sm:flex-none sm:w-[240px] sm:ml-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-faint" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter docs…" className="pl-8 h-8 text-[13px]" />
         </div>
@@ -57,9 +57,9 @@ export function KnowledgeTab({ t }: { t: TeamDetail }) {
       <AnimatePresence>
         {open && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <Card className="p-5 mb-4">
+            <Card className="p-4 sm:p-5 mb-4">
               <form
-                className="grid grid-cols-[minmax(0,1fr)_180px] gap-4"
+                className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_180px] gap-4"
                 onSubmit={(e) => {
                   e.preventDefault();
                   add.mutate();
@@ -76,7 +76,7 @@ export function KnowledgeTab({ t }: { t: TeamDetail }) {
                     <option value="restricted">Restricted</option>
                   </Select>
                 </Field>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <Field label="Content" hint="Markdown is fine. The steward quotes only what the asker's label allows.">
                     <Textarea rows={5} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
                   </Field>
@@ -92,7 +92,7 @@ export function KnowledgeTab({ t }: { t: TeamDetail }) {
                     Add
                   </Button>
                 </div>
-                {add.error && <ErrorLine error={errorLine(add.error)} className="col-span-2" />}
+                {add.error && <ErrorLine error={errorLine(add.error)} className="sm:col-span-2" />}
               </form>
             </Card>
           </motion.div>
@@ -108,16 +108,16 @@ export function KnowledgeTab({ t }: { t: TeamDetail }) {
       ) : (
         <Card className="overflow-hidden">
           {docs.map((d, i) => (
-            <motion.div key={d.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }} className="flex items-start gap-3.5 px-5 py-3.5 border-b border-line last:border-b-0 hover:bg-hover/50 transition-colors">
+            <motion.div key={d.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }} className="flex items-start gap-3 sm:gap-3.5 px-4 sm:px-5 py-3.5 border-b border-line last:border-b-0 hover:bg-hover/50 transition-colors">
               <span className="mt-0.5 grid place-items-center size-8 rounded-lg bg-sunken border border-line shrink-0">
                 <FileText className="size-4 text-faint" />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[13.5px] font-medium truncate">{d.title}</span>
-                  <LabelBadge label={d.label} />
+                  <LabelBadge label={d.label} className="shrink-0" />
                 </div>
-                <div className="text-[12.5px] text-muted mt-0.5 line-clamp-1">{d.snippet}</div>
+                <div className="text-[12.5px] text-muted mt-0.5 line-clamp-2 sm:line-clamp-1">{d.snippet}</div>
                 <div className="text-[11.5px] text-faint mt-1">
                   {d.source} · {(d.chars / 1000).toFixed(1)}k chars · updated {ago(d.updated_at)}
                 </div>

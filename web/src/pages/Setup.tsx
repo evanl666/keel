@@ -9,7 +9,7 @@ import type { Level, OkMessage, SetupStep, SetupStepId } from "../api/types";
 import { Button, Card, Field, Input, Segmented, Select, Skeleton, Textarea } from "../components/ui";
 import { KeelMark, LevelBadge } from "../components/keel";
 import { useToast } from "../components/toast";
-import { cn } from "../lib/utils";
+import { cn, scrollIntoStrip } from "../lib/utils";
 
 type Values = Record<string, string>;
 
@@ -81,7 +81,7 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
   switch (step) {
     case "admin":
       return (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Your name">{inp("name", { placeholder: "Evan Park", autoComplete: "name" })}</Field>
           <Field label="Organization">{inp("org_name", { placeholder: "Acme" })}</Field>
           <Field label="Email">{inp("email", { type: "email", placeholder: "you@company.com", autoComplete: "username" })}</Field>
@@ -94,7 +94,7 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
       const needsKey = ["anthropic", "openai", "azure_openai"].includes(v.provider);
       const needsUrl = ["ollama", "azure_openai"].includes(v.provider);
       return (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Provider">
             <Select
               value={v.provider}
@@ -112,18 +112,18 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
           </Field>
           <Field label="Model">{inp("model", { className: "font-mono text-[13px]" })}</Field>
           {needsKey && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="API key" hint="Stored encrypted on your Keel server. Sent only to the model provider.">
                 {inp("api_key", { type: "password", placeholder: v.provider === "anthropic" ? "sk-ant-…" : "sk-…", className: "font-mono text-[13px]" })}
               </Field>
             </div>
           )}
           {needsUrl && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Base URL">{inp("base_url", { placeholder: v.provider === "ollama" ? "http://localhost:11434" : "https://your-resource.openai.azure.com", className: "font-mono text-[13px]" })}</Field>
             </div>
           )}
-          {v.provider === "replay" && <p className="col-span-2 text-[12.5px] text-muted">Replay answers from recorded sessions. Good for trying Keel with no model at all.</p>}
+          {v.provider === "replay" && <p className="sm:col-span-2 text-[12.5px] text-muted">Replay answers from recorded sessions. Good for trying Keel with no model at all.</p>}
         </div>
       );
     }
@@ -149,14 +149,14 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
               </li>
             ))}
           </ol>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Bot token" hint="OAuth & Permissions. Starts with xoxb-.">
               {inp("bot_token", { placeholder: "xoxb-…", className: "font-mono text-[13px]" })}
             </Field>
             <Field label="App-level token" hint="Basic Information. Starts with xapp-.">
               {inp("app_token", { placeholder: "xapp-…", className: "font-mono text-[13px]" })}
             </Field>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Field label="Signing secret (optional)">{inp("signing_secret", { type: "password", className: "font-mono text-[13px]" })}</Field>
             </div>
           </div>
@@ -179,10 +179,10 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
               {inp("token", { type: "password", placeholder: "github_pat_…", className: "font-mono text-[13px]" })}
             </Field>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="App ID">{inp("app_id", { className: "font-mono text-[13px]" })}</Field>
               <Field label="Installation ID">{inp("installation_id", { className: "font-mono text-[13px]" })}</Field>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Field label="Private key">
                   <Textarea value={v.private_key} onChange={(e) => set("private_key", e.target.value)} rows={4} placeholder="-----BEGIN RSA PRIVATE KEY-----" className="font-mono text-[12px]" />
                 </Field>
@@ -196,25 +196,25 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
         <div className="space-y-4">
           <div>
             <div className="text-[12.5px] font-medium text-muted mb-1.5">New stewards start at</div>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-5 gap-2">
               {LEVELS.map((l) => (
                 <button
                   key={l.l}
                   type="button"
                   onClick={() => set("default_level", String(l.l))}
                   className={cn(
-                    "text-left rounded-lg border p-2.5 transition-colors cursor-pointer",
+                    "text-left rounded-lg border p-2.5 transition-colors cursor-pointer max-sm:flex max-sm:items-center max-sm:gap-3",
                     v.default_level === String(l.l) ? "border-accent bg-accent-soft" : "border-line hover:border-line-strong bg-sunken",
                   )}
                 >
                   <LevelBadge level={l.l as Level} name={l.n} />
-                  <div className="mt-1.5 text-[11.5px] leading-snug text-muted">{l.can}</div>
+                  <div className="mt-1.5 max-sm:mt-0 text-[11.5px] leading-snug text-muted">{l.can}</div>
                 </button>
               ))}
             </div>
           </div>
           <Field label="Default label for new knowledge" hint="Stewards never show a doc to an audience its label doesn't allow.">
-            <Select value={v.label_default} onChange={(e) => set("label_default", e.target.value)} className="w-[220px]">
+            <Select value={v.label_default} onChange={(e) => set("label_default", e.target.value)} className="sm:w-[220px]">
               <option value="public">Public</option>
               <option value="internal">Internal</option>
               <option value="confidential">Confidential</option>
@@ -225,18 +225,18 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
       );
     case "team":
       return (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Team name">{inp("name", { placeholder: "Payments" })}</Field>
           <Field label="Steward name">{inp("steward_name", { placeholder: "Pip" })}</Field>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <div className="text-[12.5px] font-medium text-muted mb-1.5">Steward avatar</div>
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {EMOJIS.map((e) => (
                 <button
                   key={e}
                   type="button"
                   onClick={() => set("emoji", e)}
-                  className={cn("size-9 rounded-lg border text-[18px] grid place-items-center cursor-pointer transition-all", v.emoji === e ? "border-accent bg-accent-soft scale-105" : "border-line bg-sunken hover:border-line-strong")}
+                  className={cn("size-9 max-sm:size-10 rounded-lg border text-[18px] grid place-items-center cursor-pointer transition-all", v.emoji === e ? "border-accent bg-accent-soft scale-105" : "border-line bg-sunken hover:border-line-strong")}
                 >
                   {e}
                 </button>
@@ -280,8 +280,8 @@ function StepPanel({ s, manifestUrl, onNext }: { s: SetupStep; manifestUrl: stri
         save.mutate();
       }}
     >
-      <div className="px-7 pt-6 pb-5 border-b border-line">
-        <div className="flex items-center gap-2">
+      <div className="px-5 pt-5 pb-4 sm:px-7 sm:pt-6 sm:pb-5 border-b border-line">
+        <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-[18px] font-semibold tracking-[-0.015em]">{s.title}</h2>
           {s.optional && <span className="h-5 px-1.5 rounded-md border border-line text-[11px] text-faint inline-flex items-center">Optional</span>}
           {s.done && (
@@ -292,17 +292,17 @@ function StepPanel({ s, manifestUrl, onNext }: { s: SetupStep; manifestUrl: stri
         </div>
         <p className="text-[13px] text-muted mt-1">{s.detail}</p>
       </div>
-      <div className="px-7 py-6">
+      <div className="px-5 py-5 sm:px-7 sm:py-6">
         <StepForm step={s.id} v={v} set={set} manifestUrl={manifestUrl} />
         <div className="mt-5 min-h-[38px]">
           <ResultLine r={result} />
         </div>
       </div>
-      <div className="px-7 py-4 border-t border-line bg-sunken/40 rounded-b-xl flex items-center gap-2">
+      <div className="px-5 sm:px-7 py-4 border-t border-line bg-sunken/40 rounded-b-xl flex flex-wrap items-center gap-2">
         <Button type="button" icon={<FlaskConical className="size-3.5" />} loading={test.isPending} onClick={() => test.mutate()}>
           Test
         </Button>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap justify-end items-center gap-2">
           {(s.optional || s.done) && (
             <Button type="button" variant="ghost" onClick={onNext}>
               {s.done ? "Next" : "Skip for now"}
@@ -333,9 +333,9 @@ export function Setup({ standalone }: { standalone?: boolean }) {
   };
 
   const content: ReactNode = (
-    <div className="grid grid-cols-[260px_minmax(0,1fr)] gap-6 items-start">
-      <Card className="p-3">
-        <div className="px-2.5 pt-1.5 pb-3">
+    <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4 lg:gap-6 items-start">
+      <Card className="p-2 lg:p-3 min-w-0">
+        <div className="px-2.5 pt-1.5 pb-2 lg:pb-3">
           <div className="text-[12px] text-faint">
             {doneCount} of {steps.length || 6} done
           </div>
@@ -343,17 +343,20 @@ export function Setup({ standalone }: { standalone?: boolean }) {
             <motion.div className="h-full rounded-full bg-accent" initial={{ width: 0 }} animate={{ width: `${(doneCount / (steps.length || 6)) * 100}%` }} transition={{ duration: 0.6 }} />
           </div>
         </div>
+        <div className="flex gap-1 scroll-x lg:block">
         {isLoading
-          ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-11 mb-1.5" />)
+          ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-11 mb-1.5 max-lg:w-28 max-lg:shrink-0 max-lg:mb-0" />)
           : steps.map((s, i) => {
               const on = s.id === current?.id;
               return (
                 <button
                   key={s.id}
+                  ref={on ? scrollIntoStrip : undefined}
                   onClick={() => setActive(s.id)}
-                  className={cn("relative w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-left cursor-pointer transition-colors", on ? "bg-hover" : "hover:bg-hover/60")}
+                  aria-current={on ? "step" : undefined}
+                  className={cn("relative shrink-0 lg:w-full flex items-center gap-2 lg:gap-3 px-2.5 py-2 lg:py-2.5 min-h-10 rounded-lg text-left cursor-pointer transition-colors", on ? "bg-hover" : "hover:bg-hover/60")}
                 >
-                  {i < steps.length - 1 && <span className="absolute left-[22px] top-[38px] h-[calc(100%-26px)] w-px bg-line" />}
+                  {i < steps.length - 1 && <span className="hidden lg:block absolute left-[22px] top-[38px] h-[calc(100%-26px)] w-px bg-line" />}
                   <span
                     className={cn(
                       "relative grid place-items-center size-6 rounded-full text-[11.5px] font-semibold border shrink-0 transition-colors",
@@ -363,12 +366,13 @@ export function Setup({ standalone }: { standalone?: boolean }) {
                     {s.done ? <Check className="size-3.5" /> : i + 1}
                   </span>
                   <span className="min-w-0">
-                    <span className={cn("block text-[13.5px]", on ? "font-semibold text-fg" : "text-muted")}>{s.title}</span>
-                    {s.optional && <span className="block text-[11.5px] text-faint">Optional</span>}
+                    <span className={cn("block whitespace-nowrap text-[13px] lg:text-[13.5px]", on ? "font-semibold text-fg" : "text-muted")}>{s.title}</span>
+                    {s.optional && <span className="hidden lg:block text-[11.5px] text-faint">Optional</span>}
                   </span>
                 </button>
               );
             })}
+        </div>
       </Card>
       <Card className="min-w-0">
         {current && data ? (
@@ -385,8 +389,8 @@ export function Setup({ standalone }: { standalone?: boolean }) {
   );
 
   const header = (
-    <div className="flex items-end justify-between gap-6 mb-6">
-      <div>
+    <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-end sm:justify-between sm:gap-6 sm:mb-6">
+      <div className="min-w-0">
         <h1 className="text-[22px] font-semibold tracking-[-0.02em]">{standalone ? "Set up Keel" : "Setup"}</h1>
         <p className="text-[13.5px] text-muted mt-1">
           {requiredLeft ? `${requiredLeft} required ${requiredLeft === 1 ? "step" : "steps"} left. Slack and GitHub can wait.` : "Keel is ready. Optional steps can be done any time."}
@@ -415,8 +419,8 @@ export function Setup({ standalone }: { standalone?: boolean }) {
     );
   return (
     <div className="app-bg min-h-full">
-      <div className="max-w-[1080px] mx-auto px-8 py-10">
-        <div className="flex items-center gap-2.5 mb-8">
+      <div className="max-w-[1080px] mx-auto px-4 py-6 sm:px-8 sm:py-10">
+        <div className="flex items-center gap-2.5 mb-6 sm:mb-8">
           <KeelMark size={30} />
           <span className="text-[16px] font-semibold tracking-[-0.02em]">Keel</span>
         </div>

@@ -25,3 +25,11 @@ export function isTypingTarget(t: EventTarget | null) {
   const tag = el.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
 }
+
+// Ref callback that keeps an active item visible inside a sideways-scrolling strip (tabs, steppers).
+export function scrollIntoStrip(el: HTMLElement | null) {
+  const strip = el?.parentElement;
+  if (!el || !strip || strip.scrollWidth <= strip.clientWidth) return;
+  const left = el.offsetLeft - strip.offsetLeft;
+  if (left < strip.scrollLeft || left + el.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollTo({ left: left - 16 });
+}

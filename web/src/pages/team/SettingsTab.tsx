@@ -35,13 +35,13 @@ export function SettingsTab({ t }: { t: TeamDetail }) {
     );
 
   return (
-    <div className="grid grid-cols-12 gap-5">
-      <Card className="col-span-5 self-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
+      <Card className="lg:col-span-5 self-start">
         <CardHeader title="Identity" sub="How the steward shows up in Slack and here." />
         <div className="px-5 pb-5 space-y-4">
           <div className="flex items-center gap-4">
             <StewardAvatar emoji={emoji} color={t.color} size="lg" paused={t.steward.paused} />
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <Field label="Name">
                 <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} />
               </Field>
@@ -54,7 +54,7 @@ export function SettingsTab({ t }: { t: TeamDetail }) {
                 <button
                   key={e}
                   onClick={() => setEmoji(e)}
-                  className={cn("h-9 rounded-lg border text-[18px] grid place-items-center cursor-pointer transition-all", emoji === e ? "border-accent bg-accent-soft scale-105" : "border-line bg-sunken hover:border-line-strong")}
+                  className={cn("h-9 max-sm:h-10 rounded-lg border text-[18px] grid place-items-center cursor-pointer transition-all", emoji === e ? "border-accent bg-accent-soft scale-105" : "border-line bg-sunken hover:border-line-strong")}
                 >
                   {e}
                 </button>
@@ -63,14 +63,14 @@ export function SettingsTab({ t }: { t: TeamDetail }) {
           </div>
         </div>
       </Card>
-      <Card className="col-span-7">
+      <Card className="lg:col-span-7">
         <CardHeader title="Duties" sub="Turn off what this team doesn't need. The steward stops that work right away." />
         <div className="px-5 pb-2">
           {ALL_DUTIES.map((d) => {
             const on = duties.includes(d.id);
             return (
               <div key={d.id} className="flex items-center gap-3 py-3 border-t border-line first:border-t-0">
-                <span className="text-[18px] w-7 text-center">{DUTY_META[d.id].icon}</span>
+                <span className="text-[18px] w-7 shrink-0 text-center">{DUTY_META[d.id].icon}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13.5px] font-medium">{DUTY_META[d.id].label}</div>
                   <div className="text-[12.5px] text-muted">{on ? d.line : "Off. The steward skips this."}</div>

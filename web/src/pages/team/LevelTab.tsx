@@ -41,9 +41,9 @@ export function LevelTab({ t }: { t: TeamDetail }) {
 
   if (!info)
     return (
-      <div className="grid grid-cols-12 gap-5">
-        <Skeleton className="col-span-7 h-[420px] rounded-xl" />
-        <Skeleton className="col-span-5 h-[420px] rounded-xl" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
+        <Skeleton className="lg:col-span-7 h-[420px] rounded-xl" />
+        <Skeleton className="lg:col-span-5 h-[420px] rounded-xl" />
       </div>
     );
 
@@ -66,8 +66,8 @@ export function LevelTab({ t }: { t: TeamDetail }) {
   const next = info.level < 4 ? ((info.level + 1) as Level) : null;
 
   return (
-    <div className="grid grid-cols-12 gap-5">
-      <Card className="col-span-7 overflow-hidden">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
+      <Card className="lg:col-span-7 overflow-hidden">
         <CardHeader title="Authorization level" sub={`What ${t.steward.name} may do without asking. Anything above becomes an approval.`} />
         <div className="px-5 pb-5 space-y-2">
           {[...info.levels].reverse().map((l) => {
@@ -78,7 +78,7 @@ export function LevelTab({ t }: { t: TeamDetail }) {
               <motion.div
                 key={l.level}
                 layout
-                className={cn("relative flex items-center gap-4 rounded-xl border px-4 py-3 transition-colors", current ? "border-transparent" : "border-line")}
+                className={cn("relative flex items-center gap-x-4 gap-y-2 max-sm:flex-wrap rounded-xl border px-3.5 sm:px-4 py-3 transition-colors", current ? "border-transparent" : "border-line")}
                 style={current ? { background: `linear-gradient(90deg, ${alpha(c, 0.16)}, ${alpha(c, 0.04)})`, boxShadow: `inset 0 0 0 1px ${alpha(c, 0.45)}` } : undefined}
               >
                 <span
@@ -87,12 +87,12 @@ export function LevelTab({ t }: { t: TeamDetail }) {
                 >
                   L{l.level}
                 </span>
-                <div className="min-w-0 flex-1">
+                <div className={cn("min-w-0 flex-1", current && "max-sm:basis-[calc(100%-3.25rem)]")}>
                   <div className={cn("text-[14px] font-semibold", !below && !current && "text-muted")}>{l.name}</div>
                   <div className="text-[12.5px] text-muted mt-0.5">{l.can}</div>
                 </div>
                 {current ? (
-                  <span className="text-[11.5px] font-semibold px-2 h-6 rounded-full inline-flex items-center gap-1" style={{ color: c, background: alpha(c, 0.14) }}>
+                  <span className="shrink-0 whitespace-nowrap text-[11.5px] font-semibold px-2 h-6 rounded-full inline-flex items-center gap-1 max-sm:order-last max-sm:ml-[52px]" style={{ color: c, background: alpha(c, 0.14) }}>
                     <span className="size-1.5 rounded-full live-dot" style={{ background: c, color: c }} /> {t.steward.name} is here
                   </span>
                 ) : below ? (
@@ -108,7 +108,7 @@ export function LevelTab({ t }: { t: TeamDetail }) {
         </div>
       </Card>
 
-      <div className="col-span-5 space-y-5">
+      <div className="lg:col-span-5 space-y-5">
         <Card className="p-5" glow={info.eligible_for != null ? "rgba(34,197,94,0.1)" : undefined}>
           <div className="flex items-center gap-2 text-[13px] font-semibold">
             <TrendingUp className="size-4 text-accent" />
@@ -149,7 +149,7 @@ export function LevelTab({ t }: { t: TeamDetail }) {
             <p className="text-[12.5px] text-muted mt-1">{t.steward.name} can do everything a steward can.</p>
           )}
           {info.level > 0 && (
-            <button className="mt-4 text-[12px] text-faint hover:text-bad cursor-pointer" onClick={() => change((info.level - 1) as Level)}>
+            <button className="mt-4 max-sm:mt-2 max-sm:py-2.5 text-[12px] text-faint hover:text-bad cursor-pointer" onClick={() => change((info.level - 1) as Level)}>
               Lower to L{info.level - 1}
             </button>
           )}

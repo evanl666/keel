@@ -23,9 +23,9 @@ const variants: Record<Variant, string> = {
   success: "bg-ok text-white dark:text-[#04130c] hover:brightness-110 border border-transparent shadow-[0_6px_16px_-8px_var(--ok)]",
 };
 const sizes: Record<Size, string> = {
-  sm: "h-7 px-2.5 text-[12.5px] gap-1.5 rounded-md",
-  md: "h-8 px-3 text-[13px] gap-2 rounded-lg",
-  lg: "h-10 px-4 text-[14px] gap-2 rounded-lg",
+  sm: "h-7 px-2.5 text-[12.5px] gap-1.5 rounded-md max-sm:h-10 max-sm:px-3 max-sm:rounded-lg",
+  md: "h-8 px-3 text-[13px] gap-2 rounded-lg max-sm:h-10",
+  lg: "h-10 px-4 text-[14px] gap-2 rounded-lg max-sm:h-11",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -46,7 +46,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     >
       {loading ? <Loader2 className="size-3.5 animate-spin" /> : icon}
       {children}
-      {kbd && <Kbd className={cn("ml-0.5", variant === "primary" || variant === "success" ? "opacity-70 !bg-none !bg-black/15 !border-black/10 !text-inherit !shadow-none" : "")}>{kbd}</Kbd>}
+      {kbd && <Kbd className={cn("ml-0.5 touch:hidden", variant === "primary" || variant === "success" ? "opacity-70 !bg-none !bg-black/15 !border-black/10 !text-inherit !shadow-none" : "")}>{kbd}</Kbd>}
     </button>
   );
 });
@@ -79,12 +79,12 @@ export function Card({ className, children, glow, style, ...rest }: { className?
 
 export function CardHeader({ title, sub, right, className }: { title: ReactNode; sub?: ReactNode; right?: ReactNode; className?: string }) {
   return (
-    <div className={cn("flex items-center justify-between gap-3 px-5 pt-4 pb-3", className)}>
+    <div className={cn("flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-3 gap-y-2 px-4 sm:px-5 pt-4 pb-3", className)}>
       <div className="min-w-0">
         <div className="text-[13px] font-semibold tracking-[-0.005em]">{title}</div>
         {sub && <div className="text-[12.5px] text-faint mt-0.5">{sub}</div>}
       </div>
-      {right && <div className="flex items-center gap-2 shrink-0">{right}</div>}
+      {right && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{right}</div>}
     </div>
   );
 }
@@ -152,7 +152,7 @@ export function Switch({ checked, onChange, disabled, label, color }: { checked:
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full border transition-colors duration-200 cursor-pointer disabled:opacity-50",
+        "relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full border transition-colors duration-200 cursor-pointer disabled:opacity-50 touch:before:absolute touch:before:-inset-[9px]",
         checked ? "border-transparent" : "border-line-strong bg-sunken",
       )}
       style={checked ? { background: color ?? "var(--accent)" } : undefined}
@@ -203,7 +203,7 @@ export function Tooltip({ content, children, side = "top", className }: { conten
 
 export function PageHeader({ title, sub, right, icon }: { title: ReactNode; sub?: ReactNode; right?: ReactNode; icon?: ReactNode }) {
   return (
-    <div className="flex items-end justify-between gap-6 mb-6">
+    <div className="flex flex-col gap-3 mb-5 md:flex-row md:items-end md:justify-between md:gap-6 md:mb-6">
       <div className="min-w-0">
         <h1 className="flex items-center gap-2.5 text-[22px] font-semibold tracking-[-0.02em]">
           {icon}
@@ -211,7 +211,7 @@ export function PageHeader({ title, sub, right, icon }: { title: ReactNode; sub?
         </h1>
         {sub && <p className="text-[13.5px] text-muted mt-1">{sub}</p>}
       </div>
-      {right && <div className="flex items-center gap-2 shrink-0">{right}</div>}
+      {right && <div className="flex flex-wrap items-center gap-2 max-w-full md:shrink-0">{right}</div>}
     </div>
   );
 }
@@ -219,13 +219,13 @@ export function PageHeader({ title, sub, right, icon }: { title: ReactNode; sub?
 export function Segmented<T extends string>({ value, onChange, options, size = "md" }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; count?: number }[]; size?: "sm" | "md" }) {
   const id = useId();
   return (
-    <div className={cn("inline-flex items-center rounded-lg border border-line bg-sunken p-0.5", size === "sm" ? "h-7" : "h-8")}>
+    <div className={cn("inline-flex max-w-full scroll-x items-center rounded-lg border border-line bg-sunken p-0.5 max-sm:h-10", size === "sm" ? "h-7" : "h-8")}>
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "relative h-full px-2.5 rounded-md text-[12.5px] font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5",
+            "relative h-full shrink-0 px-2.5 rounded-md text-[12.5px] font-medium whitespace-nowrap transition-colors cursor-pointer inline-flex items-center gap-1.5",
             value === o.value ? "text-fg" : "text-faint hover:text-muted",
           )}
         >
@@ -242,10 +242,11 @@ export function Segmented<T extends string>({ value, onChange, options, size = "
   );
 }
 
-const field = "w-full rounded-lg border border-line bg-sunken px-3 text-[13.5px] text-fg placeholder:text-faint outline-none transition-colors focus:border-accent focus:bg-panel focus:ring-4 focus:ring-accent-soft";
+// On phones inputs are 40px tall and 16px text, so iOS doesn't zoom on focus.
+const field = "w-full rounded-lg border border-line bg-sunken px-3 text-[13.5px] max-sm:text-[16px] text-fg placeholder:text-faint outline-none transition-colors focus:border-accent focus:bg-panel focus:ring-4 focus:ring-accent-soft";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...rest }, ref) {
-  return <input ref={ref} className={cn(field, "h-9", className)} {...rest} />;
+  return <input ref={ref} className={cn(field, "h-9 max-sm:h-10", className)} {...rest} />;
 });
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className, ...rest }, ref) {
@@ -254,7 +255,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
 
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={cn(field, "h-9 pr-8 appearance-none bg-no-repeat cursor-pointer", className)} style={{ backgroundImage: "linear-gradient(45deg, transparent 50%, var(--faint) 50%), linear-gradient(135deg, var(--faint) 50%, transparent 50%)", backgroundPosition: "calc(100% - 15px) 55%, calc(100% - 10px) 55%", backgroundSize: "5px 5px" }} {...rest}>
+    <select className={cn(field, "h-9 max-sm:h-10 pr-8 appearance-none bg-no-repeat cursor-pointer", className)} style={{ backgroundImage: "linear-gradient(45deg, transparent 50%, var(--faint) 50%), linear-gradient(135deg, var(--faint) 50%, transparent 50%)", backgroundPosition: "calc(100% - 15px) 55%, calc(100% - 10px) 55%", backgroundSize: "5px 5px" }} {...rest}>
       {children}
     </select>
   );

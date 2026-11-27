@@ -23,8 +23,8 @@ function Sources({ sources }: { sources: AskSource[] }) {
       {sources.map((s) => (
         <div key={s.title} className="flex items-center gap-2 rounded-lg border border-line bg-sunken px-2.5 py-1.5 text-[12px]">
           <FileText className="size-3.5 text-faint shrink-0" />
-          <span className="font-medium truncate">{s.title}</span>
-          <span className="text-faint truncate">· {s.source}</span>
+          <span className="min-w-0 font-medium truncate">{s.title}</span>
+          <span className="min-w-0 text-faint truncate max-sm:hidden">· {s.source}</span>
           <LabelBadge label={s.label} className="ml-auto shrink-0" />
         </div>
       ))}
@@ -108,9 +108,9 @@ function Chat({ t }: { t: TeamDetail }) {
   const submit = (m: string) => m.trim() && !send.isPending && send.mutate(m.trim());
 
   return (
-    <Card className="flex flex-col h-[600px] overflow-hidden">
+    <Card className="flex flex-col h-[min(600px,calc(100dvh-7rem))] min-h-[440px] sm:h-[600px] overflow-hidden">
       <CardHeader title={`Chat with ${t.steward.name}`} sub="Ask about the team's work. It answers from the ledger and team knowledge." className="border-b border-line pb-3" />
-      <div ref={scroller} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div ref={scroller} className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 space-y-4">
         {isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-10 w-1/2 ml-auto" />
@@ -134,9 +134,9 @@ function Chat({ t }: { t: TeamDetail }) {
       </div>
       {send.error && <ErrorLine error={errorLine(send.error)} className="mx-4 mb-2" />}
       <div className="border-t border-line p-3">
-        <div className="flex gap-1.5 mb-2 flex-wrap">
+        <div className="flex gap-1.5 mb-2 flex-wrap max-sm:flex-nowrap max-sm:scroll-x max-sm:-mx-3 max-sm:px-3">
           {(SUGGEST[t.slug] ?? SUGGEST.payments).map((s) => (
-            <button key={s} onClick={() => submit(s)} className="h-6 px-2 rounded-full border border-line text-[11.5px] text-muted hover:text-fg hover:border-line-strong cursor-pointer transition-colors">
+            <button key={s} onClick={() => submit(s)} className="shrink-0 whitespace-nowrap h-6 px-2 max-sm:h-9 max-sm:px-3 max-sm:text-[12.5px] rounded-full border border-line text-[11.5px] text-muted hover:text-fg hover:border-line-strong cursor-pointer transition-colors">
               {s}
             </button>
           ))}
@@ -148,11 +148,11 @@ function Chat({ t }: { t: TeamDetail }) {
             submit(text);
           }}
         >
-          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Message ${t.steward.name}…`} className="h-10 pr-11 rounded-xl" />
+          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Message ${t.steward.name}…`} className="h-10 max-sm:h-11 pr-12 rounded-xl" />
           <button
             type="submit"
             disabled={!text.trim() || send.isPending}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 size-7 rounded-lg grid place-items-center text-white disabled:opacity-30 cursor-pointer transition-opacity"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 size-7 max-sm:size-8 rounded-lg grid place-items-center text-white disabled:opacity-30 cursor-pointer transition-opacity"
             style={{ background: t.color }}
             aria-label="Send"
           >
@@ -175,7 +175,7 @@ function Ask({ t }: { t: TeamDetail }) {
   return (
     <Card className="overflow-hidden">
       <CardHeader title="Front desk" sub={`What another team sees when they ask ${t.steward.name}. Labels decide what it may quote.`} />
-      <div className="px-5 pb-5">
+      <div className="px-4 pb-4 sm:px-5 sm:pb-5">
         <form
           className="relative"
           onSubmit={(e) => {
@@ -184,12 +184,12 @@ function Ask({ t }: { t: TeamDetail }) {
           }}
         >
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-faint" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask as another team…" className="pl-9 pr-20" />
-          <Button type="submit" size="sm" variant="primary" className="absolute right-1 top-1/2 -translate-y-1/2" loading={ask.isPending} disabled={!q.trim()}>
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask as another team…" className="pl-9 pr-20 max-sm:h-11" />
+          <Button type="submit" size="sm" variant="primary" className="absolute right-1 top-1/2 -translate-y-1/2 max-sm:h-9" loading={ask.isPending} disabled={!q.trim()}>
             Ask
           </Button>
         </form>
-        <div className="mt-2 flex gap-1.5 flex-wrap text-[11.5px]">
+        <div className="mt-2 flex items-center gap-x-1.5 gap-y-0 flex-wrap text-[11.5px] max-sm:text-[12.5px]">
           <span className="text-faint">Try</span>
           {examples.map((e) => (
             <button
@@ -198,7 +198,7 @@ function Ask({ t }: { t: TeamDetail }) {
                 setQ(e);
                 ask.mutate(e);
               }}
-              className="text-muted hover:text-accent underline decoration-dotted underline-offset-2 cursor-pointer"
+              className="max-sm:py-2.5 text-muted hover:text-accent underline decoration-dotted underline-offset-2 cursor-pointer"
             >
               {e}
             </button>
@@ -226,13 +226,13 @@ function Ask({ t }: { t: TeamDetail }) {
 
 export function FrontDeskTab({ t }: { t: TeamDetail }) {
   return (
-    <div className="grid grid-cols-12 gap-5">
-      <div className="col-span-7 min-w-0">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
+      <div className="lg:col-span-7 min-w-0">
         <Chat t={t} />
       </div>
-      <div className="col-span-5 min-w-0 space-y-5">
+      <div className="lg:col-span-5 min-w-0 space-y-5">
         <Ask t={t} />
-        <Card className="p-5">
+        <Card className="p-4 sm:p-5">
           <div className="text-[13px] font-semibold">How labels work</div>
           <div className="mt-3 space-y-2 text-[12.5px] text-muted">
             {(
@@ -244,7 +244,7 @@ export function FrontDeskTab({ t }: { t: TeamDetail }) {
               ] as const
             ).map(([l, d]) => (
               <div key={l} className="flex items-center gap-3">
-                <LabelBadge label={l} withTip={false} className="w-[98px] justify-center" />
+                <LabelBadge label={l} withTip={false} className="w-[98px] shrink-0 justify-center" />
                 <span>{d}</span>
               </div>
             ))}

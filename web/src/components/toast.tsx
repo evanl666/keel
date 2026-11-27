@@ -35,7 +35,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={value}>
       {children}
-      <div className="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 w-[360px] pointer-events-none" aria-live="polite">
+      <div className="fixed bottom-3 inset-x-3 sm:inset-x-auto sm:bottom-5 sm:right-5 z-[100] flex flex-col gap-2 sm:w-[360px] pointer-events-none" aria-live="polite">
         <AnimatePresence initial={false}>
           {items.map((t) => (
             <motion.div
@@ -62,7 +62,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <div className="text-[13px] font-medium leading-snug">{t.title}</div>
                 {t.line && <div className={cn("text-[12.5px] mt-0.5 leading-snug", t.tone === "bad" ? "text-bad" : "text-muted")}>{t.line}</div>}
               </div>
-              <button onClick={() => dismiss(t.id)} className="text-faint hover:text-fg cursor-pointer" aria-label="Dismiss">
+              <button onClick={() => dismiss(t.id)} className="-m-2 p-2 max-sm:-my-2.5 max-sm:p-3 rounded-lg text-faint hover:text-fg cursor-pointer" aria-label="Dismiss">
                 <X className="size-3.5" />
               </button>
             </motion.div>

@@ -60,9 +60,10 @@ export function Ledger() {
       />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="flex items-center gap-2 max-sm:w-[calc(100%+2rem)] max-sm:scroll-x max-sm:-mx-4 max-sm:px-4 sm:contents">
         <button
           onClick={() => set("team", "")}
-          className={cn("h-7 px-3 rounded-full border text-[12.5px] font-medium transition-colors cursor-pointer", !team ? "border-line-strong bg-hover text-fg" : "border-line text-muted hover:text-fg")}
+          className={cn("shrink-0 h-7 max-sm:h-10 px-3 rounded-full border text-[12.5px] font-medium transition-colors cursor-pointer", !team ? "border-line-strong bg-hover text-fg" : "border-line text-muted hover:text-fg")}
         >
           All teams
         </button>
@@ -72,7 +73,7 @@ export function Ledger() {
             <button
               key={t.slug}
               onClick={() => set("team", on ? "" : t.slug)}
-              className="h-7 pl-2 pr-3 rounded-full border text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-all cursor-pointer"
+              className="shrink-0 whitespace-nowrap h-7 max-sm:h-10 pl-2 pr-3 rounded-full border text-[12.5px] font-medium inline-flex items-center gap-1.5 transition-all cursor-pointer"
               style={on ? { color: t.color, borderColor: alpha(t.color, 0.45), background: alpha(t.color, 0.12) } : { borderColor: "var(--line)", color: "var(--muted)" }}
             >
               <span className="text-[13px] leading-none">{t.steward.emoji}</span>
@@ -80,8 +81,9 @@ export function Ledger() {
             </button>
           );
         })}
-        <span className="w-px h-5 bg-line mx-1" />
-        <Select value={status} onChange={(e) => set("status", e.target.value)} className="!h-7 !w-auto text-[12.5px] !rounded-full !px-3 !pr-8">
+        </div>
+        <span className="max-sm:hidden w-px h-5 bg-line mx-1" />
+        <Select value={status} onChange={(e) => set("status", e.target.value)} className="sm:h-7! !w-auto max-sm:min-w-0 max-sm:flex-1 text-[12.5px] !rounded-full !px-3 !pr-8">
           <option value="">Any status</option>
           {STATUS_ORDER.map((s) => (
             <option key={s} value={s}>
@@ -89,7 +91,7 @@ export function Ledger() {
             </option>
           ))}
         </Select>
-        <Select value={risk} onChange={(e) => set("risk", e.target.value)} className="!h-7 !w-auto text-[12.5px] !rounded-full !px-3 !pr-8">
+        <Select value={risk} onChange={(e) => set("risk", e.target.value)} className="sm:h-7! !w-auto max-sm:min-w-0 max-sm:flex-1 text-[12.5px] !rounded-full !px-3 !pr-8">
           {RISKS.map((r) => (
             <option key={r.value} value={r.value}>
               {r.label}

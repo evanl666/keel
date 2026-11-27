@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutGrid, Inbox, ListChecks, Send, Activity, Stethoscope, ScrollText, Settings, Sun, Moon, Search, LogOut, Keyboard, ChevronsUpDown } from "lucide-react";
+import { LayoutGrid, Inbox, ListChecks, Send, Activity, Stethoscope, ScrollText, Settings, Sun, Moon, Search, LogOut, Keyboard, ChevronsUpDown, Menu, X } from "lucide-react";
 import { api } from "../api/client";
 import { useApprovals, useMe, useOperations, useOverview, useTeams } from "../api/hooks";
 import { toggleTheme, useTheme } from "../lib/theme";
@@ -18,7 +18,7 @@ function NavItem({ to, icon, label, count, tone, end }: { to: string; icon: Reac
       end={end}
       className={({ isActive }) =>
         cn(
-          "group relative flex items-center gap-2.5 h-8 px-2.5 rounded-lg text-[13px] font-medium transition-colors",
+          "group relative flex items-center gap-2.5 h-10 lg:h-8 px-2.5 rounded-lg text-[13px] font-medium transition-colors",
           isActive ? "text-fg" : "text-muted hover:text-fg hover:bg-hover",
         )
       }
@@ -85,8 +85,8 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
             <div className="px-2.5 py-2 text-[12px] text-faint">
               {me?.org?.name} · {u.role.replace("_", " ")} · v{me?.version}
             </div>
-            <button onClick={() => { setOpen(false); onHelp(); }} className="w-full flex items-center gap-2 h-8 px-2.5 rounded-lg text-[13px] text-muted hover:text-fg hover:bg-hover cursor-pointer">
-              <Keyboard className="size-3.5" /> Keyboard shortcuts <Kbd className="ml-auto">?</Kbd>
+            <button onClick={() => { setOpen(false); onHelp(); }} className="w-full flex items-center gap-2 h-10 lg:h-8 px-2.5 rounded-lg text-[13px] text-muted hover:text-fg hover:bg-hover cursor-pointer">
+              <Keyboard className="size-3.5" /> Keyboard shortcuts <Kbd className="ml-auto touch:hidden">?</Kbd>
             </button>
             <button
               onClick={async () => {
@@ -94,7 +94,7 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
                 await qc.invalidateQueries({ queryKey: ["me"] });
                 nav("/login");
               }}
-              className="w-full flex items-center gap-2 h-8 px-2.5 rounded-lg text-[13px] text-muted hover:text-fg hover:bg-hover cursor-pointer"
+              className="w-full flex items-center gap-2 h-10 lg:h-8 px-2.5 rounded-lg text-[13px] text-muted hover:text-fg hover:bg-hover cursor-pointer"
             >
               <LogOut className="size-3.5" /> Sign out
             </button>
@@ -105,34 +105,81 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
   );
 }
 
-function Sidebar({ onSearch, onHelp }: { onSearch: () => void; onHelp: () => void }) {
+function Sidebar({ onSearch, onHelp, drawer, open, onClose }: { onSearch: () => void; onHelp: () => void; drawer: boolean; open: boolean; onClose: () => void }) {
   const { data: me } = useMe();
   const { data: teams } = useTeams();
   const { data: approvals } = useApprovals();
   const { data: ops } = useOperations();
   const { data: ov } = useOverview();
   const [theme] = useTheme();
+  const ref = useRef<HTMLElement>(null);
   const needsReview = ops?.filter((o) => o.status === "needs_review").length ?? 0;
+
+  // As a drawer (below lg): focus moves in on open, Tab stays inside, Escape closes.
+  useEffect(() => {
+    if (!drawer || !open) return;
+    const el = ref.current;
+    const focusables = () => Array.from(el?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])") ?? []).filter((x) => x.offsetParent !== null);
+    focusables()[0]?.focus();
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const list = focusables();
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !el?.contains(document.activeElement))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !el?.contains(document.activeElement))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [drawer, open, onClose]);
+
   return (
-    <aside className="w-[244px] shrink-0 h-full flex flex-col border-r border-line bg-panel/60 backdrop-blur-xl">
-      <div className="flex items-center gap-2.5 px-4 h-[60px]">
+    <aside
+      ref={ref}
+      id="sidebar"
+      inert={drawer && !open}
+      role={drawer && open ? "dialog" : undefined}
+      aria-modal={drawer && open ? true : undefined}
+      aria-label={drawer ? "Menu" : undefined}
+      className={cn(
+        "flex flex-col border-r border-line",
+        "fixed inset-y-0 left-0 z-[80] w-[288px] max-w-[86vw] bg-panel shadow-pop overflow-y-auto overscroll-contain transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        open ? "translate-x-0" : "-translate-x-full",
+        "lg:static lg:z-auto lg:w-[244px] lg:max-w-none lg:shrink-0 lg:h-full lg:translate-x-0 lg:overflow-visible lg:bg-panel/60 lg:backdrop-blur-xl lg:shadow-none lg:transition-none",
+      )}
+    >
+      <div className="flex items-center gap-2.5 px-4 h-[60px] shrink-0">
         <KeelMark size={28} />
         <div className="min-w-0">
           <div className="text-[14.5px] font-semibold tracking-[-0.01em] leading-tight">Keel</div>
           <div className="text-[11.5px] text-faint leading-tight truncate">{me?.org?.name ?? "—"}</div>
         </div>
         {me?.demo && <span className="ml-auto text-[10px] font-semibold uppercase tracking-[0.08em] text-accent bg-accent-soft rounded px-1.5 py-0.5">Demo</span>}
+        <button onClick={onClose} aria-label="Close menu" className={cn("lg:hidden grid place-items-center size-10 -mr-2 rounded-lg text-muted hover:text-fg hover:bg-hover cursor-pointer", !me?.demo && "ml-auto")}>
+          <X className="size-[18px]" />
+        </button>
       </div>
 
       <div className="px-3">
         <button
           onClick={onSearch}
-          className="w-full flex items-center gap-2 h-8 px-2.5 rounded-lg border border-line bg-sunken text-[13px] text-faint hover:text-muted hover:border-line-strong transition-colors cursor-pointer"
+          className="w-full flex items-center gap-2 h-10 lg:h-8 px-2.5 rounded-lg border border-line bg-sunken text-[13px] text-faint hover:text-muted hover:border-line-strong transition-colors cursor-pointer"
         >
           <Search className="size-3.5" />
           <span className="flex-1 text-left">Search or jump…</span>
-          <Kbd>{modKey === "⌘" ? "⌘" : "Ctrl"}</Kbd>
-          <Kbd>K</Kbd>
+          <Kbd className="touch:hidden">{modKey === "⌘" ? "⌘" : "Ctrl"}</Kbd>
+          <Kbd className="touch:hidden">K</Kbd>
         </button>
       </div>
 
@@ -147,13 +194,13 @@ function Sidebar({ onSearch, onHelp }: { onSearch: () => void; onHelp: () => voi
       </nav>
 
       <div className="px-5 mt-6 mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-faint">Teams</div>
-      <nav className="px-3 space-y-0.5 overflow-y-auto">
+      <nav className="px-3 space-y-0.5 lg:overflow-y-auto">
         {teams?.map((t) => (
           <NavLink
             key={t.slug}
             to={`/teams/${t.slug}`}
             className={({ isActive }) =>
-              cn("group flex items-center gap-2.5 h-9 px-2 rounded-lg text-[13px] transition-colors", isActive ? "bg-hover text-fg" : "text-muted hover:text-fg hover:bg-hover")
+              cn("group flex items-center gap-2.5 h-11 lg:h-9 px-2 rounded-lg text-[13px] transition-colors", isActive ? "bg-hover text-fg" : "text-muted hover:text-fg hover:bg-hover")
             }
           >
             <StewardAvatar emoji={t.steward.emoji} color={t.color} paused={t.steward.paused} size="sm" />
@@ -177,11 +224,11 @@ function Sidebar({ onSearch, onHelp }: { onSearch: () => void; onHelp: () => voi
         <NavItem to="/setup" icon={<Settings />} label="Setup" />
         <button
           onClick={toggleTheme}
-          className="w-full flex items-center gap-2.5 h-8 px-2.5 rounded-lg text-[13px] font-medium text-muted hover:text-fg hover:bg-hover transition-colors cursor-pointer"
+          className="w-full flex items-center gap-2.5 h-10 lg:h-8 px-2.5 rounded-lg text-[13px] font-medium text-muted hover:text-fg hover:bg-hover transition-colors cursor-pointer"
         >
           <span className="text-faint">{theme === "dark" ? <Moon className="size-[15px]" /> : <Sun className="size-[15px]" />}</span>
           <span className="flex-1 text-left">{theme === "dark" ? "Dark" : "Light"} theme</span>
-          <Kbd>T</Kbd>
+          <Kbd className="touch:hidden">T</Kbd>
         </button>
         <div className="border-t border-line my-2" />
         <UserMenu onHelp={onHelp} />
@@ -212,19 +259,90 @@ export function useHotkeys(handlers: Record<string, () => void>, enabled = true)
   }, [enabled]);
 }
 
+const DESKTOP = "(min-width: 1024px)";
+
+function useIsDesktop() {
+  const [m, setM] = useState(() => typeof window === "undefined" || window.matchMedia(DESKTOP).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(DESKTOP);
+    const h = () => setM(mq.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  }, []);
+  return m;
+}
+
+function TopBar({ onMenu, onSearch, menuOpen }: { onMenu: () => void; onSearch: () => void; menuOpen: boolean }) {
+  const { data: me } = useMe();
+  const { data: approvals } = useApprovals();
+  const waiting = approvals?.length ?? 0;
+  return (
+    <header className="lg:hidden shrink-0 flex items-center gap-2 h-14 pl-2 pr-2 sm:pl-3 sm:pr-3 border-b border-line bg-panel/70 backdrop-blur-xl">
+      <button
+        onClick={onMenu}
+        aria-label="Open menu"
+        aria-controls="sidebar"
+        aria-expanded={menuOpen}
+        className="relative grid place-items-center size-10 rounded-lg text-muted hover:text-fg hover:bg-hover cursor-pointer"
+      >
+        <Menu className="size-5" />
+        {waiting > 0 && <span className="absolute top-2 right-2 size-2 rounded-full bg-accent ring-2 ring-panel" aria-label={`${waiting} waiting for approval`} />}
+      </button>
+      <NavLink to="/" className="flex items-center gap-2.5 min-w-0 rounded-lg pr-2">
+        <KeelMark size={26} />
+        <span className="min-w-0">
+          <span className="block text-[14px] font-semibold tracking-[-0.01em] leading-tight">Keel</span>
+          <span className="block text-[11.5px] text-faint leading-tight truncate">{me?.org?.name ?? "—"}</span>
+        </span>
+      </NavLink>
+      {me?.demo && <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-accent bg-accent-soft rounded px-1.5 py-0.5">Demo</span>}
+      <button onClick={onSearch} aria-label="Search or jump" className="ml-auto grid place-items-center size-10 rounded-lg text-muted hover:text-fg hover:bg-hover cursor-pointer">
+        <Search className="size-[18px]" />
+      </button>
+    </header>
+  );
+}
+
 export function Layout() {
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const isDesktop = useIsDesktop();
+  const drawer = !isDesktop;
   const nav = useNavigate();
   const loc = useLocation();
+  const menuBtn = useRef<HTMLElement | null>(null);
 
   const closePalette = useCallback(() => setPalette(false), []);
   const closeHelp = useCallback(() => setHelp(false), []);
+  const closeMenu = useCallback(() => {
+    setMenu(false);
+    menuBtn.current?.focus();
+    menuBtn.current = null;
+  }, []);
+  const openMenu = useCallback(() => {
+    menuBtn.current = document.activeElement as HTMLElement | null;
+    setMenu(true);
+  }, []);
+  const openPalette = useCallback(() => {
+    setMenu(false);
+    setPalette(true);
+  }, []);
+  const openHelp = useCallback(() => {
+    setMenu(false);
+    setHelp(true);
+  }, []);
+
+  useEffect(() => setMenu(false), [loc.pathname, loc.search]);
+  useEffect(() => {
+    if (isDesktop) setMenu(false);
+  }, [isDesktop]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        setMenu(false);
         setPalette((p) => !p);
         return;
       }
@@ -252,15 +370,30 @@ export function Layout() {
   const pageKey = loc.pathname.split("/").slice(0, 3).join("/");
 
   return (
-    <div className="app-bg h-full flex overflow-hidden">
-      <Sidebar onSearch={() => setPalette(true)} onHelp={() => setHelp(true)} />
-      <main className="flex-1 min-w-0 h-full overflow-y-auto" id="main">
+    <div className="app-bg h-full flex flex-col lg:flex-row overflow-hidden">
+      <TopBar onMenu={openMenu} onSearch={openPalette} menuOpen={menu} />
+      <AnimatePresence>
+        {drawer && menu && (
+          <motion.div
+            key="scrim"
+            className="fixed inset-0 z-[79] bg-black/45 backdrop-blur-[2px] lg:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={closeMenu}
+            aria-hidden
+          />
+        )}
+      </AnimatePresence>
+      <Sidebar onSearch={openPalette} onHelp={openHelp} drawer={drawer} open={menu} onClose={closeMenu} />
+      <main className="flex-1 min-w-0 min-h-0 lg:h-full overflow-y-auto overflow-x-hidden" id="main">
         <motion.div
           key={pageKey}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-          className="mx-auto max-w-[1220px] px-8 py-7"
+          className="mx-auto max-w-[1220px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7"
         >
           <Outlet />
         </motion.div>

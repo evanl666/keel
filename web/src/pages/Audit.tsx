@@ -58,12 +58,12 @@ export function Audit() {
   return (
     <div>
       <PageHeader title="Audit log" sub="Everything stewards and people did, in order. Kept for as long as your policy says." />
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative w-[280px] shrink-0">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative w-full sm:w-[280px] shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-faint" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search actor, action, target…" className="pl-8! h-8! text-[13px]" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search actor, action, target…" className="pl-8! sm:h-8! text-[13px]" />
         </div>
-        <Select value={team} onChange={(e) => setTeam(e.target.value)} className="h-8! w-[150px]! shrink-0 text-[13px]">
+        <Select value={team} onChange={(e) => setTeam(e.target.value)} className="sm:h-8! min-w-0 flex-1 basis-0 sm:flex-none sm:basis-auto sm:w-[150px]! sm:shrink-0 text-[13px]">
           <option value="">All teams</option>
           {Object.values(teams).map((t) => (
             <option key={t.slug} value={t.slug}>
@@ -71,7 +71,7 @@ export function Audit() {
             </option>
           ))}
         </Select>
-        <Select value={kind} onChange={(e) => setKind(e.target.value)} className="h-8! w-[160px]! shrink-0 text-[13px]">
+        <Select value={kind} onChange={(e) => setKind(e.target.value)} className="sm:h-8! min-w-0 max-sm:order-last max-sm:basis-full flex-1 basis-0 sm:flex-none sm:basis-auto sm:w-[160px]! sm:shrink-0 text-[13px]">
           <option value="">All actions</option>
           {kinds.map((k) => (
             <option key={k} value={k}>
@@ -79,15 +79,15 @@ export function Audit() {
             </option>
           ))}
         </Select>
-        <Select value={actorKind} onChange={(e) => setActorKind(e.target.value as typeof actorKind)} className="h-8! w-[150px]! shrink-0 text-[13px]">
+        <Select value={actorKind} onChange={(e) => setActorKind(e.target.value as typeof actorKind)} className="sm:h-8! min-w-0 flex-1 basis-0 sm:flex-none sm:basis-auto sm:w-[150px]! sm:shrink-0 text-[13px]">
           <option value="">Anyone</option>
           <option value="steward">Stewards</option>
           <option value="human">People</option>
         </Select>
-        <span className="ml-auto whitespace-nowrap text-[12px] text-faint tabular">{rows.length} entries</span>
+        <span className="max-sm:order-last max-sm:w-full sm:ml-auto whitespace-nowrap text-[12px] text-faint tabular">{rows.length} entries</span>
       </div>
       <Card className="overflow-hidden">
-        <div className="grid grid-cols-[110px_170px_190px_minmax(0,1fr)_110px] gap-4 px-5 h-9 items-center border-b border-line text-[11px] uppercase tracking-[0.07em] text-faint bg-sunken/60">
+        <div className="hidden xl:grid grid-cols-[110px_170px_190px_minmax(0,1fr)_110px] gap-4 px-5 h-9 items-center border-b border-line text-[11px] uppercase tracking-[0.07em] text-faint bg-sunken/60">
           <span>When</span>
           <span>Actor</span>
           <span>Action</span>
@@ -105,18 +105,18 @@ export function Audit() {
             const link = targetLink(e);
             const c = actionColor(e.action);
             return (
-              <div key={e.id} className="grid grid-cols-[110px_170px_190px_minmax(0,1fr)_110px] gap-4 px-5 py-2.5 items-center border-b border-line last:border-b-0 hover:bg-hover/60 transition-colors text-[13px]">
-                <span className="text-faint text-[12px] tabular" title={fullDate(e.at)}>
+              <div key={e.id} className="grid grid-cols-[minmax(0,1fr)_auto] [grid-template-areas:'action_time'_'target_target'_'actor_team'] gap-x-3 gap-y-1 xl:grid-cols-[110px_170px_190px_minmax(0,1fr)_110px] xl:[grid-template-areas:none] xl:gap-4 px-4 sm:px-5 py-3 xl:py-2.5 items-center border-b border-line last:border-b-0 hover:bg-hover/60 transition-colors text-[13px]">
+                <span className="[grid-area:time] xl:[grid-area:auto] text-right xl:text-left whitespace-nowrap text-faint text-[12px] tabular" title={fullDate(e.at)}>
                   {ago(e.at)}
                 </span>
-                <span className={cn("truncate", isSteward(e.actor) ? "text-fg" : "text-muted")}>{e.actor}</span>
-                <span className="inline-flex items-center gap-2 min-w-0">
+                <span className={cn("[grid-area:actor] xl:[grid-area:auto] min-w-0 truncate max-xl:text-[12.5px]", isSteward(e.actor) ? "text-fg" : "text-muted")}>{e.actor}</span>
+                <span className="[grid-area:action] xl:[grid-area:auto] inline-flex items-center gap-2 min-w-0">
                   <span className="size-1.5 rounded-full shrink-0" style={{ background: c }} />
                   <code className="font-mono text-[12px] truncate" style={{ color: c }}>
                     {e.action}
                   </code>
                 </span>
-                <span className="min-w-0 truncate">
+                <span className="[grid-area:target] xl:[grid-area:auto] min-w-0 max-xl:line-clamp-2 max-xl:break-words xl:truncate">
                   {link ? (
                     <Link to={link} className="font-mono text-[12px] text-fg hover:text-accent">
                       {e.target}
@@ -126,7 +126,7 @@ export function Audit() {
                   )}
                   <span className="text-muted"> · {e.detail}</span>
                 </span>
-                <span>{e.team_slug ? <TeamChip slug={e.team_slug} team={teams[e.team_slug]} size="xs" /> : <span className="text-faint text-[12px]">Org</span>}</span>
+                <span className="[grid-area:team] xl:[grid-area:auto] justify-self-end xl:justify-self-auto">{e.team_slug ? <TeamChip slug={e.team_slug} team={teams[e.team_slug]} size="xs" /> : <span className="text-faint text-[12px]">Org</span>}</span>
               </div>
             );
           })

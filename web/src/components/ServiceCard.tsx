@@ -114,7 +114,7 @@ export function ServiceCard({ s, team, showTeam = true, i = 0 }: { s: Service; t
         </div>
 
         <div className="mt-auto px-5 py-3.5 mt-4 border-t border-line flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] uppercase tracking-[0.06em] text-faint mr-1">Runbooks</span>
+          <span className="text-[11px] uppercase tracking-[0.06em] text-faint mr-1 max-sm:w-full">Runbooks</span>
           {s.runbooks.length === 0 && <span className="text-[12.5px] text-faint">None yet</span>}
           {s.runbooks.map((rb) => {
             const level = team?.steward.level ?? 0;

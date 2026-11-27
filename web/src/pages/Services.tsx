@@ -48,22 +48,22 @@ export function Services() {
       />
 
       {incidents.length > 0 && (
-        <Card className="mb-5 px-5 py-3.5 border-bad/30 flex items-center gap-3" glow="rgba(248,113,113,0.1)">
-          <span className="grid place-items-center size-8 rounded-lg bg-bad/15 text-bad">
+        <Card className="mb-5 px-4 sm:px-5 py-3.5 border-bad/30 flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1" glow="rgba(248,113,113,0.1)">
+          <span className="grid shrink-0 place-items-center size-8 rounded-lg bg-bad/15 text-bad">
             <Siren className="size-4" />
           </span>
-          <div className="text-[13px] min-w-0">
+          <div className="text-[13px] min-w-0 flex-1 basis-[calc(100%-2.75rem)] sm:basis-auto">
             <span className="font-semibold">{incidents.map((x) => x.s.name).join(", ")}</span>
             <span className="text-muted"> · {incidents[0].s.open_incident!.summary}</span>
           </div>
-          <span className="ml-auto text-[12px] text-faint whitespace-nowrap">
+          <span className="max-sm:pl-11 sm:ml-auto text-[12px] text-faint whitespace-nowrap">
             {incidents[0].t.steward.emoji} {incidents[0].t.steward.name} is on it
           </span>
         </Card>
       )}
 
       {loading ? (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-[300px] rounded-xl" />
           ))}
@@ -73,7 +73,7 @@ export function Services() {
           <EmptyState icon="🌿" title={f === "attention" ? "Everything is up" : "No services yet"} line={f === "attention" ? "Stewards check each service every minute." : "Add one from a team's Services tab."} />
         </Card>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {shown.map(({ s, t }, i) => (
             <ServiceCard key={s.id} s={s} team={t} i={i} />
           ))}

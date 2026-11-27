@@ -7,7 +7,7 @@ import type { TeamDetail } from "../../api/types";
 import { Card, Skeleton, Switch } from "../../components/ui";
 import { DUTY_META, HealthRing, LevelBadge, StewardAvatar } from "../../components/keel";
 import { useToast } from "../../components/toast";
-import { alpha, cn } from "../../lib/utils";
+import { alpha, cn, scrollIntoStrip } from "../../lib/utils";
 import { TodayTab } from "./TodayTab";
 import { LedgerTab, ServicesTab } from "./SimpleTabs";
 import { FrontDeskTab } from "./FrontDeskTab";
@@ -32,7 +32,7 @@ function PauseControl({ t }: { t: TeamDetail }) {
   const paused = patch.isPending && patch.variables?.paused !== undefined ? patch.variables.paused : t.steward.paused;
   const name = t.steward.name;
   return (
-    <div className="w-[240px] rounded-xl border border-line bg-panel/60 px-3.5 py-3">
+    <div className="w-full sm:w-[240px] rounded-xl border border-line bg-panel/60 px-3.5 py-3">
       <div className="flex items-center justify-between gap-3">
         <span className="text-[13px] font-medium flex items-center gap-1.5">
           <Pause className={cn("size-3.5", paused ? "text-warn" : "text-faint")} />
@@ -65,11 +65,16 @@ function PauseControl({ t }: { t: TeamDetail }) {
 function Header({ t }: { t: TeamDetail }) {
   return (
     <Card className="overflow-hidden" glow={alpha(t.color, 0.16)}>
-      <div className="px-7 pt-6 pb-5 flex items-start gap-5">
-        <StewardAvatar emoji={t.steward.emoji} color={t.color} paused={t.steward.paused} size="xl" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-[24px] font-semibold tracking-[-0.025em] leading-none">{t.steward.name}</h1>
+      <div className="px-4 pt-4 pb-4 sm:px-7 sm:pt-6 sm:pb-5 flex flex-wrap lg:flex-nowrap items-start gap-4 sm:gap-5">
+        <span className="max-sm:hidden shrink-0">
+          <StewardAvatar emoji={t.steward.emoji} color={t.color} paused={t.steward.paused} size="xl" />
+        </span>
+        <span className="sm:hidden shrink-0">
+          <StewardAvatar emoji={t.steward.emoji} color={t.color} paused={t.steward.paused} size="lg" />
+        </span>
+        <div className="min-w-0 flex-1 basis-[calc(100%-4.25rem)] sm:basis-[calc(100%-6.5rem)] lg:basis-auto">
+          <div className="flex items-center gap-x-2.5 gap-y-1.5 flex-wrap">
+            <h1 className="text-[22px] sm:text-[24px] font-semibold tracking-[-0.025em] leading-none">{t.steward.name}</h1>
             <LevelBadge level={t.steward.level} name={t.steward.level_name} />
             <span className="text-[13px] text-faint">
               steward of{" "}
@@ -78,8 +83,8 @@ function Header({ t }: { t: TeamDetail }) {
               </span>
             </span>
           </div>
-          <div className="mt-2 flex items-center gap-2 text-[13.5px] text-muted">
-            <span className={cn("size-1.5 rounded-full", t.steward.paused ? "bg-faint" : "bg-ok live-dot")} style={{ color: t.steward.paused ? undefined : "var(--ok)" }} />
+          <div className="mt-2 flex items-start gap-2 text-[13.5px] text-muted">
+            <span className={cn("mt-[8px] size-1.5 shrink-0 rounded-full", t.steward.paused ? "bg-faint" : "bg-ok live-dot")} style={{ color: t.steward.paused ? undefined : "var(--ok)" }} />
             {t.steward.status_line}
           </div>
           <div className="mt-3.5 flex items-center gap-1.5 flex-wrap">
@@ -91,15 +96,15 @@ function Header({ t }: { t: TeamDetail }) {
             ))}
           </div>
         </div>
-        <div className="flex items-start gap-6 shrink-0">
-          <div className="flex flex-col items-center gap-1">
+        <div className="flex items-start gap-4 sm:gap-6 w-full lg:w-auto lg:shrink-0 max-lg:sm:pl-[92px]">
+          <div className="flex flex-col items-center gap-1 shrink-0">
             <HealthRing value={t.health} size={56} />
             <span className="text-[11px] text-faint">Health</span>
           </div>
           <PauseControl t={t} />
         </div>
       </div>
-      <div className="px-7 pb-4 flex items-center gap-5 text-[12.5px] text-muted">
+      <div className="px-4 sm:px-7 pb-4 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12.5px] text-muted">
         <span>
           <b className="text-fg tabular">{t.counts.open}</b> open
         </span>
@@ -145,7 +150,7 @@ export function TeamHome() {
     return (
       <div className="space-y-4">
         <Skeleton className="h-[170px] rounded-xl" />
-        <Skeleton className="h-9 w-[520px]" />
+        <Skeleton className="h-9 w-full max-w-[520px]" />
         <Skeleton className="h-[360px] rounded-xl" />
       </div>
     );
@@ -153,12 +158,14 @@ export function TeamHome() {
   return (
     <div>
       <Header t={t} />
-      <nav className="mt-5 mb-5 flex items-center gap-1 border-b border-line">
+      <nav className="mt-5 mb-5 -mx-4 px-4 sm:mx-0 sm:px-0 flex items-center gap-1 border-b border-line scroll-x" aria-label="Team sections">
         {TABS.map((x) => (
           <Link
             key={x.id}
+            ref={active === x.id ? scrollIntoStrip : undefined}
             to={x.id === "today" ? `/teams/${slug}` : `/teams/${slug}/${x.id}`}
-            className={cn("relative h-9 px-3 text-[13px] font-medium flex items-center transition-colors", active === x.id ? "text-fg" : "text-faint hover:text-muted")}
+            aria-current={active === x.id ? "page" : undefined}
+            className={cn("relative shrink-0 whitespace-nowrap h-10 lg:h-9 px-3 text-[13px] font-medium flex items-center transition-colors", active === x.id ? "text-fg" : "text-faint hover:text-muted")}
           >
             {x.label}
             {active === x.id && <motion.span layoutId="team-tab" className="absolute left-2 right-2 -bottom-px h-[2px] rounded-full" style={{ background: t.color }} transition={{ type: "spring", stiffness: 500, damping: 40 }} />}

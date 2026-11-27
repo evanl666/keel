@@ -27,18 +27,18 @@ export function DemoBanner() {
     <motion.div
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative mb-6 flex items-center gap-3 rounded-xl border border-accent/25 bg-accent-soft/60 px-4 h-11 overflow-hidden"
+      className="relative mb-5 sm:mb-6 flex items-center gap-3 rounded-xl border border-accent/25 bg-accent-soft/60 px-4 min-h-11 max-sm:py-2 overflow-hidden"
     >
       <span className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[#a5b0ff] to-[#5b6cff]" />
       <ShieldCheck className="size-4 text-accent shrink-0" />
-      <span className="text-[13px] text-fg/90 truncate">
+      <span className="min-w-0 text-[13px] text-fg/90 sm:truncate max-sm:leading-snug">
         <span className="font-semibold">Demo workspace</span>
-        <span className="text-muted"> · synthetic data · nothing leaves this machine</span>
+        <span className="text-muted max-sm:block"><span className="max-sm:hidden"> · </span>synthetic data · nothing leaves this machine</span>
       </span>
       <Button
         size="sm"
         variant="secondary"
-        className="ml-auto"
+        className="ml-auto shrink-0"
         icon={<Play className="size-3" />}
         loading={busy}
         onClick={async () => {
@@ -54,7 +54,8 @@ export function DemoBanner() {
           }
         }}
       >
-        Play next event
+        <span className="max-sm:hidden">Play next event</span>
+        <span className="sm:hidden">Next event</span>
       </Button>
     </motion.div>
   );
@@ -128,9 +129,9 @@ export function Overview() {
   return (
     <div>
       {me?.demo && <DemoBanner />}
-      <div className="flex items-end justify-between gap-6 mb-6">
-        <div>
-          <h1 className="text-[24px] font-semibold tracking-[-0.025em]">
+      <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-end sm:justify-between sm:gap-6 sm:mb-6">
+        <div className="min-w-0">
+          <h1 className="text-[22px] sm:text-[24px] font-semibold tracking-[-0.025em]">
             {greeting()}
             {name ? `, ${name}` : ""}.
           </h1>
@@ -146,7 +147,7 @@ export function Overview() {
           </p>
         </div>
         {!!t?.pending_approvals && (
-          <Link to="/approvals">
+          <Link to="/approvals" className="shrink-0 self-start sm:self-auto">
             <Button variant="primary" icon={<Inbox className="size-3.5" />} kbd="G A">
               Review {t.pending_approvals}
             </Button>
@@ -154,15 +155,15 @@ export function Overview() {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {isLoading || !data
           ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-[210px] rounded-xl" />)
           : data.teams.map((tm, i) => <StewardCard key={tm.slug} t={tm} i={i} />)}
       </div>
 
-      <Card className="mt-4 px-6 py-4">
+      <Card className="mt-4 px-4 py-4 sm:px-6">
         {t ? (
-          <div className="grid grid-cols-7 divide-x divide-line">
+          <div className="grid grid-cols-2 gap-y-4 sm:grid-cols-4 lg:grid-cols-7 lg:gap-y-0 lg:divide-x lg:divide-line">
             {[
               <Stat key="o" label="Open" value={t.open} />,
               <Stat key="d" label="Done · 7d" value={t.done_7d} tone="ok" />,
@@ -172,7 +173,7 @@ export function Overview() {
               <Stat key="i" label="Incidents" value={t.incidents_open} tone={t.incidents_open ? "bad" : "ok"} />,
               <Stat key="n" label="To review" value={t.ops_needs_review} tone={t.ops_needs_review ? "warn" : undefined} />,
             ].map((el, i) => (
-              <div key={i} className={cn(i > 0 && "pl-5")}>
+              <div key={i} className={cn("min-w-0", i > 0 && "lg:pl-5", i % 2 === 1 && "max-sm:pl-4 max-sm:border-l max-sm:border-line", i % 4 !== 0 && "sm:max-lg:pl-4 sm:max-lg:border-l sm:max-lg:border-line")}>
                 {el}
               </div>
             ))}
@@ -182,10 +183,10 @@ export function Overview() {
         )}
       </Card>
 
-      <div className="mt-4 grid grid-cols-12 gap-4">
-        <Card className="col-span-7 flex flex-col">
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <Card className="lg:col-span-7 flex flex-col min-w-0">
           <CardHeader title="Between teams" sub="Open requests flow from the asking team to the owning team. Red means at risk." />
-          <div className="px-4 pb-4 flex-1 flex items-center">
+          <div className="px-2 sm:px-4 pb-4 flex-1 flex items-center">
             {data ? (
               data.cross_team.length ? (
                 <TeamGraph teams={data.teams} edges={data.cross_team} />
@@ -197,7 +198,7 @@ export function Overview() {
             )}
           </div>
         </Card>
-        <Card className="col-span-5 flex flex-col min-h-0">
+        <Card className="lg:col-span-5 flex flex-col min-h-0 min-w-0">
           <CardHeader
             title="Live activity"
             sub="What stewards did, as it happens."

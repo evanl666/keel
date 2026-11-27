@@ -105,7 +105,7 @@ export function Approvals() {
         title="Approvals"
         sub={data ? (total ? `${total} ${total === 1 ? "thing waits" : "things wait"} for a human. Nothing goes out until you say so.` : "Nothing waits for you.") : "Loading…"}
         right={
-          <div className="flex items-center gap-3 text-[12px] text-faint">
+          <div className="flex items-center gap-3 text-[12px] text-faint touch:hidden">
             <span className="flex items-center gap-1.5"><Kbd>J</Kbd><Kbd>K</Kbd> move</span>
             <span className="flex items-center gap-1.5"><Kbd>E</Kbd> edit</span>
             <span className="flex items-center gap-1.5"><Kbd>R</Kbd> reject</span>
@@ -114,8 +114,8 @@ export function Approvals() {
         }
       />
 
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-8 min-w-0">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+        <div className="lg:col-span-8 min-w-0">
           {isLoading ? (
             <SkeletonRows rows={3} className="[&>*]:h-56" />
           ) : !visible.length ? (
@@ -160,24 +160,24 @@ export function Approvals() {
                         style={active ? { boxShadow: `0 0 0 1px ${alpha(color, 0.45)}, 0 18px 40px -18px ${alpha(color, 0.45)}` } : undefined}
                         glow={active ? alpha(color, 0.1) : undefined}
                       >
-                        <div className="flex items-center gap-2.5 px-5 pt-4">
+                        <div className="flex items-center gap-2.5 px-4 sm:px-5 pt-4">
                           {t && <StewardAvatar emoji={t.steward.emoji} color={color} size="sm" paused={t.steward.paused} />}
-                          <div className="text-[12.5px]">
+                          <div className="min-w-0 truncate text-[12.5px]">
                             <span className="font-medium">{t?.steward.name}</span>
-                            <span className="text-faint"> · {t?.name} · {ago(a.created_at)}</span>
+                            <span className="text-faint"><span className="max-sm:hidden"> · {t?.name}</span> · {ago(a.created_at)}</span>
                           </div>
-                          <div className="ml-auto flex items-center gap-1.5">
-                            <span className="h-5 px-1.5 rounded-md border border-line text-[11px] text-muted inline-flex items-center">{KIND_LABEL[a.kind] ?? a.kind}</span>
+                          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                            <span className="max-sm:hidden h-5 px-1.5 rounded-md border border-line text-[11px] text-muted inline-flex items-center">{KIND_LABEL[a.kind] ?? a.kind}</span>
                             <LabelBadge label={a.label} />
                           </div>
                         </div>
-                        <div className="px-5 pt-3">
-                          <div className="text-[16px] font-semibold tracking-[-0.01em]">{a.title}</div>
+                        <div className="px-4 sm:px-5 pt-3">
+                          <div className="text-[15px] sm:text-[16px] font-semibold tracking-[-0.01em] max-sm:leading-snug">{a.title}</div>
                           <div className="mt-1.5 flex items-start gap-1.5 text-[13px] text-muted">
                             <Info className="size-3.5 mt-[3px] shrink-0 text-faint" />
                             {a.reason}
                           </div>
-                          <div className="mt-1 flex items-center gap-1.5 text-[13px] text-muted">
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-muted">
                             <Users className="size-3.5 shrink-0 text-faint" />
                             <span>
                               Goes to <span className="text-fg font-medium">{a.audience}</span>
@@ -190,10 +190,10 @@ export function Approvals() {
                             )}
                           </div>
                         </div>
-                        <div className="mx-5 mt-4 rounded-lg border border-line bg-sunken transition-shadow focus-within:border-accent focus-within:ring-4 focus-within:ring-accent-soft">
-                          <div className="flex items-center justify-between px-3.5 h-8 border-b border-line text-[11px] uppercase tracking-[0.07em] text-faint">
-                            <span>{isEditing ? "Editing. Your version is what gets sent." : "Exactly what will be sent"}</span>
-                            {drafts[a.id] !== undefined && drafts[a.id] !== a.preview && !isEditing && <span className="normal-case tracking-normal text-accent">Edited</span>}
+                        <div className="mx-4 sm:mx-5 mt-4 min-w-0 rounded-lg border border-line bg-sunken transition-shadow focus-within:border-accent focus-within:ring-4 focus-within:ring-accent-soft">
+                          <div className="flex items-center justify-between gap-3 px-3.5 h-8 border-b border-line text-[11px] uppercase tracking-[0.07em] text-faint">
+                            <span className="truncate">{isEditing ? "Editing. Your version is what gets sent." : "Exactly what will be sent"}</span>
+                            {drafts[a.id] !== undefined && drafts[a.id] !== a.preview && !isEditing && <span className="shrink-0 normal-case tracking-normal text-accent">Edited</span>}
                           </div>
                           {isEditing ? (
                             <Textarea
@@ -208,14 +208,14 @@ export function Approvals() {
                               className="border-0! rounded-none! rounded-b-lg! bg-transparent! ring-0! focus:ring-0! focus:bg-transparent! px-4! font-mono text-[12.5px]"
                             />
                           ) : isCode ? (
-                            <pre className="px-3.5 py-3 font-mono text-[12.5px] leading-relaxed text-fg/90 whitespace-pre-wrap">{preview}</pre>
+                            <pre className="px-3.5 py-3 font-mono text-[12.5px] leading-relaxed text-fg/90 whitespace-pre-wrap break-words">{preview}</pre>
                           ) : (
                             <div className="px-3.5 py-3">
                               <Markdown compact>{preview}</Markdown>
                             </div>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 px-5 py-4">
+                        <div className="flex flex-wrap items-center gap-2 px-4 sm:px-5 py-4">
                           {isEditing ? (
                             <>
                               <Button size="md" variant="ghost" onClick={(e) => { e.stopPropagation(); setDrafts((d) => { const n = { ...d }; delete n[a.id]; return n; }); setEditing(null); }}>
@@ -230,7 +230,7 @@ export function Approvals() {
                               Edit
                             </Button>
                           )}
-                          <div className="ml-auto flex items-center gap-2">
+                          <div className="ml-auto flex flex-wrap justify-end items-center gap-2">
                             <Button variant="danger" icon={<X className="size-3.5" />} kbd={active ? "R" : undefined} onClick={(e) => { e.stopPropagation(); decide.mutate({ a, approve: false }); }}>
                               Reject
                             </Button>
@@ -248,11 +248,11 @@ export function Approvals() {
           )}
         </div>
 
-        <aside className="col-span-4 space-y-4">
-          <Card className="p-2">
+        <aside className="contents lg:block lg:col-span-4 lg:space-y-4">
+          <Card className="p-2 max-lg:order-first max-lg:flex max-lg:gap-1 max-lg:scroll-x">
             <button
               onClick={() => setTeamFilter("")}
-              className={cn("w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px] cursor-pointer transition-colors", !teamFilter ? "bg-hover text-fg" : "text-muted hover:bg-hover")}
+              className={cn("w-full max-lg:w-auto max-lg:shrink-0 whitespace-nowrap flex items-center gap-2.5 h-10 lg:h-9 px-2.5 max-lg:px-3 rounded-lg text-[13px] cursor-pointer transition-colors", !teamFilter ? "bg-hover text-fg" : "text-muted hover:bg-hover")}
             >
               <span className="flex-1 text-left font-medium">All teams</span>
               <span className="tabular text-faint">{total}</span>
@@ -264,17 +264,17 @@ export function Approvals() {
                   setTeamFilter(t.slug === teamFilter ? "" : t.slug);
                   setSel(0);
                 }}
-                className={cn("w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px] cursor-pointer transition-colors", teamFilter === t.slug ? "bg-hover text-fg" : "text-muted hover:bg-hover")}
+                className={cn("w-full max-lg:w-auto max-lg:shrink-0 whitespace-nowrap flex items-center gap-2.5 h-10 lg:h-9 px-2.5 max-lg:px-3 rounded-lg text-[13px] cursor-pointer transition-colors", teamFilter === t.slug ? "bg-hover text-fg" : "text-muted hover:bg-hover")}
               >
                 <span className="text-[15px] leading-none">{t.steward.emoji}</span>
                 <span className="flex-1 text-left">
-                  {t.steward.name} <span className="text-faint">· {t.name}</span>
+                  {t.steward.name} <span className="text-faint max-sm:hidden">· {t.name}</span>
                 </span>
                 <span className="tabular text-faint">{counts[t.slug] ?? 0}</span>
               </button>
             ))}
           </Card>
-          <Card className="p-5">
+          <Card className="p-4 sm:p-5">
             <div className="text-[13px] font-semibold">Why stewards ask</div>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
               Each steward works at a level. Anything above it, or anything labeled confidential going somewhere new, waits here. Approving drafts unchanged helps a steward earn the next level.

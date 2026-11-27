@@ -45,21 +45,21 @@ export function CommitmentRow({ c, teams, showTeams = true }: { c: Commitment; t
       onKeyDown={(e) => e.key === "Enter" && nav(`/commitments/${c.key}`)}
       tabIndex={0}
       role="link"
-      className="group flex items-center gap-3 h-[42px] px-4 border-t border-line first:border-t-0 cursor-pointer hover:bg-hover focus:bg-hover outline-none transition-colors"
+      className="group flex items-center gap-2.5 sm:gap-3 h-11 sm:h-[42px] px-4 border-t border-line first:border-t-0 cursor-pointer hover:bg-hover focus:bg-hover outline-none transition-colors"
     >
       <RiskDot risk={c.risk} />
-      <PriorityIcon priority={c.priority} />
+      <span className="max-sm:hidden inline-flex shrink-0"><PriorityIcon priority={c.priority} /></span>
       <span className="w-11 shrink-0 font-mono text-[12px] text-faint">{c.key}</span>
       <StatusIcon status={c.status} />
       <span className={cn("min-w-0 flex-1 truncate text-[13.5px]", CLOSED.has(c.status) ? "text-faint" : "text-fg")}>{c.title}</span>
-      {(c.label === "confidential" || c.label === "restricted") && <LabelBadge label={c.label} />}
+      {(c.label === "confidential" || c.label === "restricted") && <LabelBadge label={c.label} className="max-sm:hidden" />}
       {showTeams && (
         <span className="hidden lg:inline-flex">
           <TeamFlow owner={c.owner_team} requester={c.requester_team} teams={teams} />
         </span>
       )}
-      <Person name={c.owner_person} />
-      <span className="w-[86px] text-right shrink-0">
+      <span className="max-sm:hidden inline-flex shrink-0"><Person name={c.owner_person} /></span>
+      <span className="sm:w-[86px] text-right shrink-0">
         {CLOSED.has(c.status) ? <span className="text-[12.5px] text-faint">{STATUS_META[c.status].label}</span> : <DueText iso={c.due_at} />}
       </span>
     </motion.div>
@@ -79,7 +79,7 @@ export function CommitmentList({ items, teams, showTeams = true }: { items: Comm
           <div key={s} className="border-t border-line first:border-t-0">
             <button
               onClick={() => setCollapsed((c) => ({ ...c, [s]: !c[s] }))}
-              className="w-full flex items-center gap-2.5 h-9 px-4 bg-panel-2 text-left cursor-pointer hover:bg-hover transition-colors"
+              className="w-full flex items-center gap-2.5 h-10 lg:h-9 px-4 bg-panel-2 text-left cursor-pointer hover:bg-hover transition-colors"
             >
               <ChevronRight className={cn("size-3.5 text-faint transition-transform", !closed && "rotate-90")} />
               <StatusIcon status={s} />
@@ -109,11 +109,11 @@ const BOARD: CommitmentStatus[] = ["proposed", "accepted", "in_progress", "block
 export function CommitmentBoard({ items, teams }: { items: Commitment[]; teams: Record<string, TeamSummary> }) {
   const nav = useNavigate();
   return (
-    <div className="grid grid-cols-5 gap-3">
+    <div className="flex max-lg:items-start gap-3 scroll-x snap-x snap-mandatory scroll-px-4 -mx-4 px-4 sm:scroll-px-6 sm:-mx-6 sm:px-6 lg:grid lg:grid-cols-5 lg:mx-0 lg:px-0 lg:overflow-visible">
       {BOARD.map((s) => {
         const list = sortCommitments(items.filter((c) => c.status === s));
         return (
-          <div key={s} className="min-w-0 rounded-xl border border-line bg-sunken/60 p-2">
+          <div key={s} className="w-[min(272px,80vw)] shrink-0 snap-start lg:w-auto lg:shrink min-w-0 rounded-xl border border-line bg-sunken/60 p-2">
             <div className="flex items-center gap-2 px-1.5 h-8">
               <StatusIcon status={s} />
               <span className="text-[12.5px] font-semibold">{STATUS_META[s].label}</span>

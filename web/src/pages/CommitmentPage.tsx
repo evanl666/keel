@@ -34,7 +34,7 @@ const EVENT_TONE: Record<string, string> = {
 
 function Prop({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-3 min-h-[34px]">
+    <div className="flex items-center gap-3 min-h-[34px] max-sm:py-1">
       <span className="w-[86px] shrink-0 text-[12.5px] text-faint">{label}</span>
       <span className="min-w-0 flex-1 flex items-center gap-2 text-[13px]">{children}</span>
     </div>
@@ -44,16 +44,16 @@ function Prop({ label, children }: { label: string; children: ReactNode }) {
 export function OperationRow({ o, compact }: { o: Operation; compact?: boolean }) {
   return (
     <div className={cn("px-5 py-3 border-t border-line first:border-t-0", compact && "px-4")}>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5">
         <OpStatusPill status={o.status} />
-        <span className="min-w-0 flex-1 truncate text-[13px]">{o.summary}</span>
-        <span className="text-[12px] text-faint tabular whitespace-nowrap">{ago(o.updated_at)}</span>
+        <span className="min-w-0 flex-1 truncate text-[13px] max-sm:order-last max-sm:basis-full max-sm:whitespace-normal max-sm:line-clamp-2">{o.summary}</span>
+        <span className="ml-auto text-[12px] text-faint tabular whitespace-nowrap">{ago(o.updated_at)}</span>
       </div>
       <div className="mt-1.5 flex items-center gap-2 text-[12px] text-faint flex-wrap">
-        <code className="font-mono text-[11.5px] text-muted bg-hover border border-line rounded px-1.5 py-px">{o.op_id}</code>
+        <code className="max-w-full truncate font-mono text-[11.5px] text-muted bg-hover border border-line rounded px-1.5 py-px" title={o.op_id}>{o.op_id}</code>
         <span>{o.kind}</span>
         <span>→</span>
-        <span className="font-mono text-[11.5px]">{o.target}</span>
+        <span className="max-w-full truncate font-mono text-[11.5px]">{o.target}</span>
         {o.attempts > 1 && <span>· {o.attempts} attempts</span>}
         {o.remote_ref && (
           <a href={o.remote_ref.startsWith("http") ? o.remote_ref : undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
@@ -92,13 +92,13 @@ export function CommitmentPage() {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-8 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+        <div className="lg:col-span-8 space-y-4">
           <Skeleton className="h-8 w-2/3" />
           <Skeleton className="h-24" />
           <Skeleton className="h-64" />
         </div>
-        <Skeleton className="col-span-4 h-80" />
+        <Skeleton className="lg:col-span-4 h-80" />
       </div>
     );
   }
@@ -120,22 +120,22 @@ export function CommitmentPage() {
       <Link to="/ledger" className="inline-flex items-center gap-1.5 text-[12.5px] text-faint hover:text-fg mb-4 transition-colors">
         <ArrowLeft className="size-3.5" /> Ledger
       </Link>
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-8 min-w-0">
-          <div className="flex items-center gap-2 text-[12.5px] text-faint">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+        <div className="lg:col-span-8 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-faint">
             <span className="font-mono">{c.key}</span>
             <span>·</span>
             <StatusIcon status={c.status} size={13} />
             <span>{STATUS_META[c.status].label}</span>
             <RiskTag risk={c.risk} />
           </div>
-          <h1 className="mt-2 text-[24px] font-semibold tracking-[-0.025em] leading-tight">{c.title}</h1>
+          <h1 className="mt-2 text-[21px] sm:text-[24px] font-semibold tracking-[-0.025em] leading-tight break-words">{c.title}</h1>
           {c.detail && <p className="mt-3 text-[14px] leading-relaxed text-fg/80 max-w-[680px]">{c.detail}</p>}
 
-          <Card className="mt-6">
+          <Card className="mt-5 sm:mt-6">
             <CardHeader title="Timeline" sub={`${c.events.length} events`} />
-            <ol className="relative px-5 pb-4">
-              <span className="absolute left-[27px] top-2 bottom-6 w-px bg-line" />
+            <ol className="relative px-4 sm:px-5 pb-4">
+              <span className="absolute left-[23px] sm:left-[27px] top-2 bottom-6 w-px bg-line" />
               {c.events.map((e, i) => (
                 <motion.li
                   key={e.id}
@@ -159,7 +159,7 @@ export function CommitmentPage() {
               ))}
             </ol>
             <form
-              className="flex items-center gap-2 px-5 py-3 border-t border-line"
+              className="flex items-center gap-2 px-4 sm:px-5 py-3 border-t border-line"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!note.trim()) return;
@@ -187,14 +187,14 @@ export function CommitmentPage() {
           </Card>
         </div>
 
-        <aside className="col-span-4">
-          <Card className="p-5 sticky top-6">
+        <aside className="lg:col-span-4">
+          <Card className="p-4 sm:p-5 lg:sticky lg:top-6">
             <div className="text-[11.5px] font-medium uppercase tracking-[0.07em] text-faint mb-2">Properties</div>
             <Prop label="Status">
               <Select
                 value={c.status}
                 onChange={(e) => patch.mutate({ status: e.target.value as CommitmentStatus })}
-                className="!h-8 text-[13px]"
+                className="lg:h-8! text-[13px]"
               >
                 {(Object.keys(STATUS_META) as CommitmentStatus[]).map((s) => (
                   <option key={s} value={s}>
@@ -205,7 +205,7 @@ export function CommitmentPage() {
             </Prop>
             <Prop label="Priority">
               <PriorityIcon priority={c.priority} />
-              <Select value={c.priority} onChange={(e) => patch.mutate({ priority: e.target.value as Priority })} className="!h-8 text-[13px]">
+              <Select value={c.priority} onChange={(e) => patch.mutate({ priority: e.target.value as Priority })} className="lg:h-8! text-[13px]">
                 {["urgent", "high", "normal", "low"].map((p) => (
                   <option key={p} value={p}>
                     {p[0].toUpperCase() + p.slice(1)}

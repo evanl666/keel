@@ -36,7 +36,7 @@ export function LedgerTab({ t }: { t: TeamDetail }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4 gap-4">
+      <div className="flex flex-wrap items-center justify-between mb-4 gap-x-4 gap-y-3">
         <Segmented
           value={scope}
           onChange={setScope}
@@ -47,14 +47,14 @@ export function LedgerTab({ t }: { t: TeamDetail }) {
           ]}
         />
         <form
-          className="flex items-center gap-2"
+          className="flex flex-wrap sm:flex-nowrap items-center gap-2 max-lg:w-full"
           onSubmit={(e) => {
             e.preventDefault();
             if (title.trim()) add.mutate();
           }}
         >
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={`New promise ${t.name} makes…`} className="h-8 w-[280px] text-[13px]" />
-          <Input type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} className="h-8 w-[140px] text-[13px]" aria-label="Due date" />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={`New promise ${t.name} makes…`} className="h-8 w-full sm:w-auto sm:flex-1 lg:flex-none lg:w-[280px] text-[13px]" />
+          <Input type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} className="h-8 min-w-0 flex-1 sm:flex-none sm:w-[140px] text-[13px]" aria-label="Due date" />
           <Select value={priority} onChange={(e) => setPriority(e.target.value as Priority)} className="h-8 w-[110px] text-[13px]" aria-label="Priority">
             <option value="low">Low</option>
             <option value="normal">Normal</option>
@@ -99,25 +99,25 @@ export function ServicesTab({ t }: { t: TeamDetail }) {
   });
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         <div className="text-[13px] text-muted">
           {t.steward.name} checks each service every minute and opens an incident after 3 failures in a row.
         </div>
-        <Button size="md" icon={<Plus className="size-3.5" />} onClick={() => setOpen((o) => !o)}>
+        <Button size="md" className="shrink-0" icon={<Plus className="size-3.5" />} onClick={() => setOpen((o) => !o)}>
           Watch a service
         </Button>
       </div>
       {open && (
         <Card className="p-4 mb-4">
           <form
-            className="flex items-center gap-2"
+            className="flex flex-col sm:flex-row sm:items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               add.mutate();
             }}
           >
-            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, like checkout-api" className="w-[220px]" />
-            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…/healthz" className="flex-1 font-mono text-[13px]" />
+            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, like checkout-api" className="sm:w-[220px]" />
+            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…/healthz" className="sm:flex-1 font-mono text-[13px]" />
             <Button type="submit" variant="primary" loading={add.isPending} disabled={!name.trim() || !url.trim()}>
               Start watching
             </Button>
@@ -126,12 +126,12 @@ export function ServicesTab({ t }: { t: TeamDetail }) {
         </Card>
       )}
       {isLoading ? (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           <Skeleton className="h-[300px] rounded-xl" />
           <Skeleton className="h-[300px] rounded-xl" />
         </div>
       ) : data?.length ? (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {data.map((s, i) => (
             <ServiceCard key={s.id} s={s} team={t} showTeam={false} i={i} />
           ))}

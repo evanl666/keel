@@ -33,8 +33,8 @@ export function Login() {
   });
 
   return (
-    <div className="app-bg min-h-full grid place-items-center px-6 py-16 relative overflow-hidden">
-      <div className="relative">
+    <div className="app-bg min-h-full grid place-items-center px-4 pt-10 pb-16 sm:px-6 sm:py-16 relative overflow-hidden">
+      <div className="relative w-full max-w-[360px]">
         {CREW.map((c) => (
           <motion.div
             key={c.emoji}
@@ -52,7 +52,7 @@ export function Login() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="relative w-[360px] rounded-2xl border border-line bg-panel/90 backdrop-blur-xl shadow-pop p-7"
+          className="relative w-full rounded-2xl border border-line bg-panel/90 backdrop-blur-xl shadow-pop p-6 sm:p-7"
         >
           <div className="flex flex-col items-center text-center">
             <KeelMark size={40} />
@@ -96,7 +96,7 @@ export function Login() {
           {me?.demo && <p className="mt-4 text-center text-[12px] text-faint">Demo workspace: any email and password work.</p>}
         </motion.div>
       </div>
-      <div className="absolute bottom-5 left-0 right-0 text-center text-[11.5px] text-faint">Keel {me?.version ?? ""} · self-hosted · your data stays on your servers</div>
+      <div className="absolute bottom-5 inset-x-4 text-center text-[11.5px] text-faint">Keel {me?.version ?? ""} · self-hosted · your data stays on your servers</div>
     </div>
   );
 }

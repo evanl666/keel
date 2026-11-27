@@ -342,21 +342,23 @@ export function Markdown({ children, compact }: { children: string; compact?: bo
 }
 
 export function KeelMark({ size = 28 }: { size?: number }) {
+  // Unique gradient ids: two marks can be on the page and one may be display:none.
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
       <defs>
-        <linearGradient id="keel-g" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={`keel-g${uid}`} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#a5b0ff" />
           <stop offset="1" stopColor="#5b6cff" />
         </linearGradient>
-        <linearGradient id="keel-bg" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`keel-bg${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#1a1d2a" />
           <stop offset="1" stopColor="#0b0d14" />
         </linearGradient>
       </defs>
-      <rect width="32" height="32" rx="8.5" fill="url(#keel-bg)" />
+      <rect width="32" height="32" rx="8.5" fill={`url(#keel-bg${uid})`} />
       <rect x="0.5" y="0.5" width="31" height="31" rx="8" fill="none" stroke="rgba(255,255,255,0.12)" />
-      <path d="M6 14.5h20c-1.3 5.4-5.4 8.8-10 8.8S7.3 19.9 6 14.5z" fill="url(#keel-g)" />
+      <path d="M6 14.5h20c-1.3 5.4-5.4 8.8-10 8.8S7.3 19.9 6 14.5z" fill={`url(#keel-g${uid})`} />
       <path d="M16 7.5v15.8" stroke="#dfe3ff" strokeWidth="1.8" strokeLinecap="round" />
       <path d="M8.5 25.8c2.4-1 5-1 7.5 0s5.1 1 7.5 0" stroke="var(--t-indigo)" strokeOpacity="0.55" strokeWidth="1.4" strokeLinecap="round" fill="none" />
     </svg>

@@ -57,8 +57,8 @@ function ReviewCard({ o }: { o: Operation }) {
     );
   };
   return (
-    <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 60, transition: { duration: 0.25 } }} className="px-5 py-4 border-t border-[#fb923c]/15 first:border-t-0">
-      <div className="flex items-start gap-4">
+    <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 60, transition: { duration: 0.25 } }} className="px-4 sm:px-5 py-4 border-t border-[#fb923c]/15 first:border-t-0">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2.5">
             <OpStatusPill status={o.status} />
@@ -70,12 +70,14 @@ function ReviewCard({ o }: { o: Operation }) {
           </div>
           <div className="mt-2 flex items-center gap-2 flex-wrap text-[12px] text-faint">
             <TeamChip slug={o.team_slug} team={teams[o.team_slug]} size="xs" />
-            <code className="font-mono text-[11.5px] text-muted bg-hover border border-line rounded px-1.5 py-px">{o.op_id}</code>
+            <code className="max-w-full truncate font-mono text-[11.5px] text-muted bg-hover border border-line rounded px-1.5 py-px" title={o.op_id}>{o.op_id}</code>
             <span>
               {o.kind} → <span className="font-mono text-[11.5px]">{o.target}</span>
             </span>
-            <span>· {o.attempts} {o.attempts === 1 ? "attempt" : "attempts"}</span>
-            <span title={fullDate(o.updated_at)}>· {ago(o.updated_at)}</span>
+            <span className="inline-flex items-center gap-2 whitespace-nowrap">
+              <span>· {o.attempts} {o.attempts === 1 ? "attempt" : "attempts"}</span>
+              <span title={fullDate(o.updated_at)}>· {ago(o.updated_at)}</span>
+            </span>
             {o.remote_ref && (
               <a href={o.remote_ref.startsWith("http") ? o.remote_ref : undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
                 <ExternalLink className="size-3" /> Check target
@@ -83,7 +85,7 @@ function ReviewCard({ o }: { o: Operation }) {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <Button size="sm" variant="ghost" icon={<Ban className="size-3.5" />} loading={pending === "cancel"} disabled={!!pending} onClick={() => run("cancel")}>
             Cancel
           </Button>
@@ -127,13 +129,13 @@ export function Operations() {
         title="Outbox"
         sub="Every write a steward makes, with a stable op_id. If an outcome is unclear, Keel checks before it retries."
         right={
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 max-w-full scroll-x">
             {[{ slug: "", name: "All teams" }, ...Object.values(teams)].map((t) => (
               <button
                 key={t.slug}
                 onClick={() => setTeam(t.slug)}
                 className={cn(
-                  "h-7 px-2.5 rounded-md text-[12.5px] cursor-pointer transition-colors flex items-center gap-1.5",
+                  "shrink-0 whitespace-nowrap h-7 max-sm:h-10 max-sm:px-3 px-2.5 rounded-md text-[12.5px] cursor-pointer transition-colors flex items-center gap-1.5",
                   team === t.slug ? "bg-hover text-fg border border-line" : "text-muted hover:text-fg border border-transparent",
                 )}
               >
@@ -149,8 +151,8 @@ export function Operations() {
         {review.length > 0 && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mb-6">
             <Card className="overflow-hidden border-[#fb923c]/30" glow="rgba(251,146,60,0.09)">
-              <div className="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-[#fb923c]/15">
-                <span className="grid place-items-center size-7 rounded-lg bg-[#fb923c]/15 text-[#fb923c]">
+              <div className="flex items-center gap-3 px-4 sm:px-5 pt-4 pb-3 border-b border-[#fb923c]/15">
+                <span className="grid shrink-0 place-items-center size-7 rounded-lg bg-[#fb923c]/15 text-[#fb923c]">
                   <Eye className="size-4" />
                 </span>
                 <div>
@@ -170,7 +172,7 @@ export function Operations() {
         )}
       </AnimatePresence>
 
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-3">
         <Segmented
           size="sm"
           value={filter}
@@ -190,7 +192,7 @@ export function Operations() {
       </div>
 
       <Card className="overflow-hidden">
-        <div className="grid grid-cols-[150px_minmax(0,1fr)_110px_190px_90px] gap-4 px-5 h-9 items-center border-b border-line text-[11px] uppercase tracking-[0.07em] text-faint bg-sunken/60">
+        <div className="hidden xl:grid grid-cols-[150px_minmax(0,1fr)_110px_190px_90px] gap-4 px-5 h-9 items-center border-b border-line text-[11px] uppercase tracking-[0.07em] text-faint bg-sunken/60">
           <span>Status</span>
           <span>Operation</span>
           <span>Team</span>
@@ -213,13 +215,13 @@ export function Operations() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="grid grid-cols-[150px_minmax(0,1fr)_110px_190px_90px] gap-4 px-5 py-3 items-start border-b border-line last:border-b-0 hover:bg-hover/60 transition-colors"
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] [grid-template-areas:'status_status_updated'_'op_op_op'_'team_id_id'] gap-x-3 gap-y-2 px-4 sm:px-5 py-3 items-center xl:items-start xl:grid-cols-[150px_minmax(0,1fr)_110px_190px_90px] xl:[grid-template-areas:none] xl:gap-4 border-b border-line last:border-b-0 hover:bg-hover/60 transition-colors"
                 >
-                  <div className="flex flex-col items-start gap-1.5 pt-px">
+                  <div className="[grid-area:status] xl:[grid-area:auto] flex items-center gap-3 xl:flex-col xl:items-start xl:gap-1.5 pt-px">
                     <OpStatusPill status={o.status} />
                     <Steps status={o.status} />
                   </div>
-                  <div className="min-w-0">
+                  <div className="[grid-area:op] xl:[grid-area:auto] min-w-0">
                     <div className="text-[13px] truncate">{o.summary}</div>
                     <div className="mt-0.5 text-[12px] text-faint truncate">
                       {o.kind} → <span className="font-mono text-[11.5px]">{o.target}</span>
@@ -240,13 +242,13 @@ export function Operations() {
                       </div>
                     )}
                   </div>
-                  <div className="pt-px">
+                  <div className="[grid-area:team] xl:[grid-area:auto] pt-px">
                     <TeamChip slug={o.team_slug} team={teams[o.team_slug]} size="xs" />
                   </div>
-                  <code className="pt-0.5 font-mono text-[11.5px] text-muted truncate" title={o.op_id}>
+                  <code className="[grid-area:id] xl:[grid-area:auto] min-w-0 pt-0.5 font-mono text-[11.5px] text-muted truncate" title={o.op_id}>
                     {o.op_id}
                   </code>
-                  <span className="pt-0.5 text-right text-[12px] text-faint tabular" title={fullDate(o.updated_at)}>
+                  <span className="[grid-area:updated] xl:[grid-area:auto] pt-0.5 text-right text-[12px] text-faint tabular whitespace-nowrap" title={fullDate(o.updated_at)}>
                     {ago(o.updated_at)}
                   </span>
                 </motion.div>
