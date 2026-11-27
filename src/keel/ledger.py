@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import zoneinfo
 
 import sqlalchemy as sa
 from sqlalchemy import orm
@@ -14,6 +15,28 @@ OPEN_STATUSES = ("proposed", "accepted", "in_progress", "blocked")
 CLOSED_STATUSES = ("done", "dropped", "declined")
 STATUSES = OPEN_STATUSES + CLOSED_STATUSES
 PRIORITIES = ("low", "normal", "high", "urgent")
+
+
+def day(when: dt.datetime, tz: str = "UTC", fmt: str = "%a %b %d") -> str:
+    """Format a stored UTC time as a day in the team's timezone, e.g. "Fri Nov 27".
+
+    Messages name the day people see on their own calendar; formatting the UTC value directly can be a day
+    off for teams far from UTC. Naive values are treated as UTC (SQLite drops the offset). `fmt` is a strftime
+    pattern, e.g. "%Y-%m-%d" for machine-readable output.
+    """
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=dt.UTC)
+    try:
+        zone = zoneinfo.ZoneInfo(tz or "UTC")
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+        zone = zoneinfo.ZoneInfo("UTC")
+    return when.astimezone(zone).strftime(fmt)
+
+
+def team_tz(session: orm.Session, team_id: str | None) -> str:
+    """The team's timezone name, or UTC when unknown."""
+    team = session.get(models.Team, team_id) if team_id else None
+    return team.timezone if team is not None and team.timezone else "UTC"
 
 
 def risk(c: models.Commitment, now: dt.datetime | None = None) -> str:
@@ -170,7 +193,7 @@ def update(
         add_event(session, c, actor, "due", "Due date removed")
         c.due_at = None
     elif due_at is not None and due_at != c.due_at:
-        add_event(session, c, actor, "due", f"Due {due_at:%a %b %d}")
+        add_event(session, c, actor, "due", f"Due {day(due_at, team_tz(session, c.owner_team_id))}")
         c.due_at = due_at
     if owner_person is not None and owner_person != c.owner_person:
         add_event(session, c, actor, "owner", f"Owner: {owner_person}")

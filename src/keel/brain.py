@@ -133,7 +133,8 @@ STATUS_WORDS = {
 }
 
 
-def _title_from(text: str) -> str:
+def title_from(text: str) -> str:
+    """A short imperative title from a chat message: mentions, greetings and date phrases removed."""
     t = re.sub(r"<@[A-Z0-9]+>|^(@[\w.\-]+[,:]?\s*)+", "", text.strip()).strip()
     t = re.sub(r"^(hey|hi|hello)\b[^,]*,?\s*", "", t, flags=re.IGNORECASE)
     t = re.sub(
@@ -172,14 +173,14 @@ def rule_triage(text: str, now: dt.datetime, tz: str = "UTC", team_slugs: tuple[
     if INCIDENT_RE.search(text):
         return Triage(
             kind="incident",
-            title=_title_from(text),
+            title=title_from(text),
             priority="urgent",
             reply="Logged as urgent. I'll keep the thread updated.",
         )
     if PROMISE_RE.search(text):
         return Triage(
             kind="promise",
-            title=_title_from(text),
+            title=title_from(text),
             due=due_s,
             reply="Logged it" + (f", due {due_s}." if due_s else ". When should it be done?"),
         )
@@ -187,7 +188,7 @@ def rule_triage(text: str, now: dt.datetime, tz: str = "UTC", team_slugs: tuple[
         rf"\b(can|could|would)\s+(the\s+)?[@#]?{re.escape(for_team)}(\s+team)?\b", text, re.IGNORECASE
     )
     if REQUEST_RE.search(text) or asks_team:
-        title = _title_from(
+        title = title_from(
             re.sub(
                 rf"^(can|could|would)\s+(the\s+)?[@#]?{re.escape(for_team)}(\s+team)?\s+(please\s+)?",
                 "",

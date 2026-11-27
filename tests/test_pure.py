@@ -1,8 +1,10 @@
 """Pure helpers: labels, levels, error classes, knowledge search."""
 
+import datetime as dt
+
 import pytest
 
-from keel import errors, knowledge, labels, levels
+from keel import errors, knowledge, labels, ledger, levels
 
 
 def test_strictest_label_of_empty_is_default() -> None:
@@ -111,3 +113,16 @@ def test_bm25_single_and_ranking() -> None:
     )
     assert ranked[0].title == "webhooks"
     assert "lunch" not in [p.title for p in ranked]
+
+
+def test_day_uses_the_team_timezone() -> None:
+    late_friday_in_la = dt.datetime(2026, 11, 28, 2, 0, tzinfo=dt.UTC)
+    assert ledger.day(late_friday_in_la) == "Sat Nov 28"
+    assert ledger.day(late_friday_in_la, "America/Los_Angeles") == "Fri Nov 27"
+
+
+def test_day_treats_naive_as_utc_and_unknown_zones_as_utc() -> None:
+    naive = dt.datetime(2026, 11, 28, 2, 0)
+    assert ledger.day(naive, "America/Los_Angeles") == "Fri Nov 27"
+    assert ledger.day(naive, "Not/AZone") == "Sat Nov 28"
+    assert ledger.day(naive, "") == "Sat Nov 28"

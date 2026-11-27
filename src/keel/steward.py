@@ -316,8 +316,8 @@ class Turn:
     withheld: int = 0
 
 
-def _fmt_commitment(c: models.Commitment) -> str:
-    due = f", due {c.due_at:%a %b %d}" if c.due_at else ""
+def _fmt_commitment(c: models.Commitment, tz: str = "UTC") -> str:
+    due = f", due {ledger.day(c.due_at, tz)}" if c.due_at else ""
     who = f", {c.owner_person}" if c.owner_person else ""
     return f"{c.key} {c.title} ({c.status.replace('_', ' ')}{due}{who}; {ledger.risk(c).replace('_', ' ')})"
 
@@ -381,7 +381,7 @@ class Desk:
                 rows = [c for c in rows if c.requester_team_id]
         if not rows:
             return f"Nothing {which.replace('_', ' ')}."
-        lines = [_fmt_commitment(c) for c in rows[:LIST_LIMIT]]
+        lines = [_fmt_commitment(c, self.team.timezone) for c in rows[:LIST_LIMIT]]
         more = f"\n…and {len(rows) - LIST_LIMIT} more on the ledger page." if len(rows) > LIST_LIMIT else ""
         return "\n".join(lines) + more
 
@@ -391,7 +391,7 @@ class Desk:
         if c is None:
             return f"No commitment {key}."
         events = "\n".join(f"- {e.at:%b %d %H:%M} {e.actor}: {e.text}" for e in c.events[-6:])
-        return f"{_fmt_commitment(c)}\n{c.detail[:400]}\nTimeline:\n{events}"
+        return f"{_fmt_commitment(c, self.team.timezone)}\n{c.detail[:400]}\nTimeline:\n{events}"
 
     def log_commitment(
         self, title: str, due: str | None = None, owner_person: str | None = None, priority: str = "normal"
@@ -418,7 +418,7 @@ class Desk:
         self.turn.actions.append(
             {"kind": "commitment", "text": f"Logged {c.key}: {c.title}", "link": f"/commitments/{c.key}"}
         )
-        return f"Logged {_fmt_commitment(c)}"
+        return f"Logged {_fmt_commitment(c, self.team.timezone)}"
 
     def update_commitment(
         self, key: str, status: str | None = None, due: str | None = None, note: str | None = None
@@ -442,7 +442,7 @@ class Desk:
         self.turn.actions.append(
             {"kind": "commitment", "text": f"Updated {c.key}", "link": f"/commitments/{c.key}"}
         )
-        return f"Updated {_fmt_commitment(c)}"
+        return f"Updated {_fmt_commitment(c, self.team.timezone)}"
 
     def ask_team(self, team: str, title: str, due: str | None = None, detail: str = "") -> str:
         """Ask another team (by slug) for work. Their steward logs it in their ledger; we track it."""
@@ -548,7 +548,7 @@ def _rule_chat(desk: Desk, text: str) -> None:
         r"^(?:please\s+)?ask\s+(?:@|#)?([a-z0-9\-]+)(?:\s+team)?\s+(?:to\s+)?(.+)$", t, re.IGNORECASE
     ):
         due = brain.parse_due(m[2], models.utcnow(), desk.team.timezone)
-        title = brain._title_from(m[2])
+        title = brain.title_from(m[2])
         desk.turn.text = desk.ask_team(m[1].lower(), title, due=m[2] if due else None, detail=t)
         return
     if m := re.search(r"\b(C-\d+)\b", t, re.IGNORECASE):

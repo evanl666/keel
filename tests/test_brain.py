@@ -61,4 +61,4 @@ def test_rule_triage_ignores_chatter() -> None:
 
 
 def test_title_strips_mentions_and_trailing_dates() -> None:
-    assert brain._title_from("@Pip please update the runbook tomorrow") == "Update the runbook"
+    assert brain.title_from("@Pip please update the runbook tomorrow") == "Update the runbook"

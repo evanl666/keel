@@ -120,7 +120,7 @@ def render(
                 f["risky"],
                 lambda r: (
                     f"- {'🔴' if r[2] == 'overdue' else '🟠'} **{r[0]}** {r[1]}"
-                    + (f" · due {r[3]:%a %b %d}" if r[3] else "")
+                    + (f" · due {ledger.day(r[3], team.timezone)}" if r[3] else "")
                     + (f" · {r[4]}" if r[4] else "")
                 ),
             ),
@@ -259,9 +259,9 @@ def nudge(session: orm.Session, now: dt.datetime | None = None) -> int:
             continue
         who = f"{c.owner_person}, " if c.owner_person else ""
         when = (
-            f"was due {c.due_at:%a %b %d}"
+            f"was due {ledger.day(c.due_at, team.timezone)}"
             if r == "overdue"
-            else (f"is due {c.due_at:%a %b %d}" if c.due_at else "is blocked")
+            else (f"is due {ledger.day(c.due_at, team.timezone)}" if c.due_at else "is blocked")
         )
         text = f"{who}{c.key} ({c.title}) {when}. Still on track? Reply with a new date or 'done'."
         steward.say(
