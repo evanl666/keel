@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import re
 
 import pytest
 import sqlalchemy as sa
 
-from keel import brain, db, demo, ledger, llm, models, steward
+from keel import brain, db, demo, knowledge, learning, ledger, llm, models, steward
 
 PROVIDER = os.environ.get("KEEL_LIVE_PROVIDER", "")
 pytestmark = [
@@ -213,3 +214,116 @@ def test_live_promise_scan_on_a_real_repo(model) -> None:
     assert report.stats["promises"] == len(report.promises)
     assert all(p.url.startswith("https://github.com/langchain-ai/deepagents/") for p in report.promises)
     assert all(p.status in promises.STATUSES for p in report.promises)
+
+
+# ---------------------------------------------------------------- learning
+
+CJK = re.compile(r"[\u4e00-\u9fff]")
+SNACKS = "I'll restock the snack drawer by Friday"
+
+
+def _lessons(team_id: str, text: str, clearance: str = "internal") -> str:
+    with db.session() as s:
+        return learning.render(learning.relevant(s, team_id, text, clearance, mark_used=False))
+
+
+def test_live_not_work_lesson_changes_triage(team: models.Team, model) -> None:
+    """Without the lesson it's a promise; after a person dropped a near-identical one, the model calls it chatter."""
+    kw = {"steward": "Pip", "team": "Payments", "now": NOW, "tz": "America/Los_Angeles"}
+    assert brain.triage(model, SNACKS, **kw).kind == "promise"
+    with db.session() as s:
+        learning.add_lesson(
+            s,
+            s.get(models.Team, team.id),
+            kind="triage",
+            situation="I'll restock the snack drawer by Monday",
+            before="Logged as work: Restock the snack drawer",
+            after=learning.NOT_WORK,
+            note="office chores aren't team work",
+            author="Ada",
+        )
+    t = brain.triage(
+        model, "I'll refill the snack drawer tomorrow", lessons=_lessons(team.id, "snack drawer"), **kw
+    )
+    assert t.kind == "chatter", t
+
+
+def test_live_taught_rule_changes_the_chat_reply(demo_org: str) -> None:
+    with db.session() as s:
+        learning.teach(
+            s, steward.team_by_slug(s, demo_org, "payments"), "Always reply in Simplified Chinese.", "Lena"
+        )
+    reply = _chat(demo_org, "payments", "How do we rotate the webhook signing secret?")
+    assert CJK.search(reply.text), reply.text
+
+
+def test_live_edited_replies_teach_the_house_style(team: models.Team, model) -> None:
+    """Two drafts the team rewrote to open with "TL;DR:" — the next answer does the same."""
+    with db.session() as s:
+        t = s.get(models.Team, team.id)
+        knowledge.add(
+            s,
+            t,
+            "Webhook secret",
+            "Rotate the Stripe webhook secret in the dashboard, then update Vault "
+            "path payments/stripe and restart checkout-api. Takes 10 minutes.",
+            "internal",
+        )
+        for q, before, after in [
+            (
+                "how do refunds get approved?",
+                "Refunds under $10k are approved by the on-call engineer.",
+                "TL;DR: on-call approves refunds under $10k.",
+            ),
+            (
+                "where is the payouts runbook?",
+                "The payouts runbook lives in the wiki under Payments/Runbooks.",
+                "TL;DR: wiki → Payments/Runbooks.",
+            ),
+        ]:
+            learning.add_lesson(s, t, kind="reply", situation=q, before=before, after=after, author="Maya")
+        found = knowledge.search(s, [t.id], "how do I rotate the webhook secret?", "internal")
+    lessons = _lessons(team.id, "how do I rotate the webhook secret?")
+    a = brain.answer_full(
+        model, "how do I rotate the webhook secret?", found, steward="Pip", team="Payments", lessons=lessons
+    )
+    assert a.known and a.text.lstrip().upper().startswith("TL;DR"), a.text
+
+
+def test_live_unanswered_question_becomes_an_open_question(team: models.Team, model) -> None:
+    with db.session() as s:
+        t = s.get(models.Team, team.id)
+        knowledge.add(
+            s,
+            t,
+            "Webhook secret",
+            "Rotate the Stripe webhook secret in the dashboard, then update Vault "
+            "path payments/stripe and restart checkout-api.",
+            "internal",
+        )
+    for text, gap in [
+        ("@Pip how do we rotate the webhook secret?", False),
+        ("@Pip how long do we keep webhook delivery logs?", True),
+    ]:
+        with db.session() as s:
+            h = steward.handle_message(
+                s,
+                s.get(models.Team, team.id),
+                text,
+                source_ref=f"live:{text}",
+                person="Ravi",
+                model=model,
+                directed=True,
+            )
+            gaps = s.scalar(sa.select(sa.func.count()).select_from(models.KnowledgeGap))
+        assert h.outcome == "question", h
+        assert gaps == (1 if gap else 0), (text, h.reply)
+        assert brain.NO_ANSWER not in (h.reply or "")
+
+
+def test_live_desk_agent_logs_an_open_question(demo_org: str) -> None:
+    reply = _chat(demo_org, "payments", "Do we allow refunds to crypto wallets? I couldn't find a policy.")
+    with db.session() as s:
+        gap = s.scalar(sa.select(models.KnowledgeGap).where(models.KnowledgeGap.question.ilike("%crypto%")))
+    assert gap is not None, reply.text
+    assert any(a["kind"] == "question" for a in reply.meta.get("actions", [])), reply.meta

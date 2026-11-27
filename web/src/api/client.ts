@@ -11,8 +11,11 @@ import type {
   CommitmentFilters,
   CreateCommitmentBody,
   CreateTeamBody,
+  Gap,
   KnowledgeDoc,
   Label,
+  LearningInfo,
+  Lesson,
   Level,
   LevelInfo,
   LoginBody,
@@ -162,6 +165,12 @@ export const api = {
   knowledge: (slug: string) => get<KnowledgeDoc[]>(`/api/teams/${enc(slug)}/knowledge`),
   addKnowledge: (slug: string, body: { title: string; content: string; label: Label; source?: string }) =>
     post<KnowledgeDoc>(`/api/teams/${enc(slug)}/knowledge`, body),
+  learning: (slug: string) => get<LearningInfo>(`/api/teams/${enc(slug)}/learning`),
+  teach: (slug: string, rule: string) => post<Lesson>(`/api/teams/${enc(slug)}/lessons`, { rule }),
+  setLessonActive: (id: string, active: boolean) => patch<Lesson>(`/api/lessons/${enc(id)}`, { active }),
+  fillGap: (id: string, body: { content?: string; title?: string; label: Label }) =>
+    post<{ gap: Gap; doc: KnowledgeDoc }>(`/api/gaps/${enc(id)}/fill`, body),
+  dismissGap: (id: string) => post<Gap>(`/api/gaps/${enc(id)}/dismiss`),
   ask: (slug: string, question: string) => post<AskResult>(`/api/teams/${enc(slug)}/ask`, { question }),
 
   services: (slug: string) => get<Service[]>(`/api/teams/${enc(slug)}/services`),

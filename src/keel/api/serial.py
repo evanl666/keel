@@ -8,7 +8,7 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy import orm
 
-from keel import ledger, levels, models, services
+from keel import learning, ledger, levels, models, services
 
 HEALTH_COST = {
     "overdue": 12,
@@ -267,6 +267,44 @@ def knowledge_doc(d: models.KnowledgeDoc) -> J:
         "updated_at": iso(d.updated_at),
         "snippet": " ".join(d.content.split())[:SNIPPET_CHARS],
         "chars": len(d.content),
+    }
+
+
+def lesson(r: models.Lesson) -> J:
+    """Lesson, with its one-line headline."""
+    return {
+        "id": r.id,
+        "kind": r.kind,
+        "headline": learning.headline(r),
+        "situation": r.situation,
+        "before": r.before,
+        "after": r.after,
+        "note": r.note,
+        "label": r.label,
+        "source": r.source,
+        "author": r.author,
+        "active": r.active,
+        "uses": r.uses,
+        "last_used_at": iso(r.last_used_at),
+        "created_at": iso(r.created_at),
+    }
+
+
+def gap(g: models.KnowledgeGap) -> J:
+    """Open (or closed) question."""
+    return {
+        "id": g.id,
+        "question": g.question,
+        "asked_by": g.asked_by,
+        "count": g.count,
+        "status": g.status,
+        "suggested_answer": g.suggested_answer,
+        "suggested_by": g.suggested_by,
+        "doc_id": g.doc_id,
+        "closed_by": g.closed_by,
+        "created_at": iso(g.created_at),
+        "last_asked_at": iso(g.last_asked_at),
+        "closed_at": iso(g.closed_at),
     }
 
 

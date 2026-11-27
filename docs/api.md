@@ -56,7 +56,7 @@ interface CrossTeamEdge { from_team: string; to_team: string; open: number; at_r
 
 interface ActivityItem {
   id: string; at: string; team_slug: string | null;
-  kind: "commitment" | "approval" | "operation" | "service" | "brief" | "knowledge" | "level" | "inbox" | "chat";
+  kind: "commitment" | "approval" | "operation" | "service" | "brief" | "knowledge" | "level" | "inbox" | "chat" | "learning" | "promotion";
   icon: string;                     // emoji
   text: string;                     // one plain line: "Pip logged C-88 for Payments: rotate webhook secret"
   link: string | null;              // UI route, e.g. "/commitments/C-88"
@@ -115,7 +115,36 @@ interface LevelInfo {
 }
 
 interface KnowledgeDoc { id: string; title: string; source: string; label: Label; updated_at: string; snippet: string; chars: number; }
-interface AskResult { answer: string; label: Label; sources: { title: string; source: string; label: Label }[]; withheld: number; } // withheld = sources hidden because the audience can't see them
+interface AskResult {
+  answer: string; label: Label; sources: { title: string; source: string; label: Label }[];
+  withheld: number;                 // sources hidden because the audience can't see them
+  open_question: boolean;           // true when the notes had no answer and the question was logged for the team
+}
+
+// What the steward learned. kind: "reply" (an edited draft), "triage" (a message it got wrong), "rule" (taught outright).
+interface Lesson {
+  id: string; kind: "reply" | "triage" | "rule"; headline: string;   // headline: one line for lists
+  situation: string; before: string; after: string; note: string;  // note = the reason a person gave
+  label: Label; source: string; author: string;                     // source: "teach", "approval:<id>", "commitment:<key>"
+  active: boolean; uses: number; last_used_at: string | null; created_at: string;
+}
+// A question the notes couldn't answer. "suggested" = someone answered in the Slack thread; one click saves it.
+interface Gap {
+  id: string; question: string; asked_by: string; count: number;
+  status: "open" | "suggested" | "filled" | "dismissed";
+  suggested_answer: string | null; suggested_by: string | null;
+  doc_id: string | null; closed_by: string | null;
+  created_at: string; last_asked_at: string; closed_at: string | null;
+}
+interface LearningInfo {
+  stats: {
+    lessons_active: number; rules: number; learned_this_week: number; used_this_week: number;
+    open_questions: number; suggested_answers: number; filled_total: number;
+    unedited_rate: number | null; unedited_rate_before: number | null;   // drafts sent unedited, last 30 days vs the 30 before
+  };
+  lessons: Lesson[];                // only those within the reader's clearance
+  gaps: Gap[];                      // open and suggested first
+}
 
 interface ServiceCheck { at: string; ok: boolean; latency_ms: number | null; status_code: number | null; }
 interface Service {
@@ -168,15 +197,20 @@ interface CheckupReport {
 | GET | /api/commitments?team=&status=&risk= | | Commitment[] |
 | POST | /api/commitments | {team, title, detail?, due_at?, owner_person?, priority?, requester_team?} | Commitment |
 | GET | /api/commitments/{key} | | CommitmentDetail |
-| PATCH | /api/commitments/{key} | {status?, due_at?, owner_person?, priority?, note?} | CommitmentDetail |
+| PATCH | /api/commitments/{key} | {status?, due_at?, owner_person?, priority?, note?} | CommitmentDetail — a fix within 48 h of the steward logging it becomes a lesson |
 | GET | /api/approvals?team=&status=pending | | Approval[] |
-| POST | /api/approvals/{id}/approve | {edited_preview?} | Approval |
-| POST | /api/approvals/{id}/reject | {reason?} | Approval |
+| POST | /api/approvals/{id}/approve | {edited_preview?} | Approval — an edit becomes a lesson |
+| POST | /api/approvals/{id}/reject | {reason?} | Approval — a reason becomes a lesson |
 | GET | /api/operations?team=&status= | | Operation[] |
 | POST | /api/operations/{id}/resolve | {outcome: "done" \| "retry" \| "cancel"} | Operation |
 | GET | /api/teams/{slug}/knowledge | | KnowledgeDoc[] |
 | POST | /api/teams/{slug}/knowledge | {title, content, label, source?} | KnowledgeDoc |
 | POST | /api/teams/{slug}/ask | {question} | AskResult |
+| GET | /api/teams/{slug}/learning | | LearningInfo |
+| POST | /api/teams/{slug}/lessons | {rule} | Lesson — teach a rule (team members) |
+| PATCH | /api/lessons/{id} | {active} | Lesson — switch a lesson on or off |
+| POST | /api/gaps/{id}/fill | {content?, title?, label?} | {gap: Gap, doc: KnowledgeDoc} — content defaults to the suggested answer |
+| POST | /api/gaps/{id}/dismiss | | Gap |
 | GET | /api/teams/{slug}/services | | Service[] |
 | POST | /api/teams/{slug}/services | {name, url, owner?} | Service |
 | POST | /api/services/{id}/runbooks/{rid}/run | | Operation |

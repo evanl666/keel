@@ -160,7 +160,7 @@ def add(
         "knowledge",
         "📚",
         f"{team.name} knowledge {verb}: {title}",
-        f"/teams/{team.slug}?tab=knowledge",
+        f"/teams/{team.slug}/knowledge",
     )
     feed.audit(session, team.org_id, actor, f"knowledge.{verb}", source, f"label={label}", team.id)
     return doc

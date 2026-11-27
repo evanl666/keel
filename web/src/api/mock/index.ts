@@ -12,8 +12,11 @@ import type {
   CommitmentEvent,
   CrossTeamEdge,
   Duty,
+  Gap,
   KnowledgeDoc,
   Label,
+  LearningStats,
+  Lesson,
   Level,
   Me,
   Operation,
@@ -37,6 +40,7 @@ const state = {
   approvals: D.makeApprovals(),
   services: D.makeServices(),
   knowledge: D.makeKnowledge(),
+  learning: D.makeLearning(),
   briefs: D.makeBriefs(),
   chat: D.makeChat(),
   levels: D.makeLevels(),
@@ -169,6 +173,48 @@ function newOp(p: Pick<Operation, "op_id" | "team_slug" | "kind" | "target" | "s
   return o;
 }
 
+function logGap(slug: string, question: string) {
+  const t = team(slug);
+  const q = question.replace(/^(@[\w.-]+[,:]?\s*)+/, "").trim();
+  const list = (state.learning.gaps[slug] ??= []);
+  const same = list.find((g) => (g.status === "open" || g.status === "suggested") && g.question.toLowerCase() === q.toLowerCase());
+  if (same) {
+    same.count += 1;
+    same.last_asked_at = now();
+    return;
+  }
+  list.unshift({ id: nid("gp"), question: q[0].toUpperCase() + q.slice(1), asked_by: user.name, count: 1, status: "open", suggested_answer: null, suggested_by: null, doc_id: null, closed_by: null, created_at: now(), last_asked_at: now(), closed_at: null });
+  emit({ team_slug: slug, kind: "learning", icon: "❓", text: `Open question for ${t.name}: ${q}`, link: `/teams/${slug}/learning` });
+}
+
+function learningStats(slug: string): LearningStats {
+  const ls = state.learning.lessons[slug] ?? [];
+  const gs = state.learning.gaps[slug] ?? [];
+  const week = Date.now() - 7 * 86_400_000;
+  const recent = (s: string | null) => !!s && Date.parse(s) >= week;
+  const rates: Record<string, [number, number]> = { payments: [0.86, 0.71], platform: [0.93, 0.9], mobile: [0.64, 0.64] };
+  const [rate, before] = rates[slug] ?? [null, null];
+  return {
+    lessons_active: ls.filter((l) => l.active).length,
+    rules: ls.filter((l) => l.active && l.kind === "rule").length,
+    learned_this_week: ls.filter((l) => recent(l.created_at)).length,
+    used_this_week: ls.filter((l) => recent(l.last_used_at)).length,
+    open_questions: gs.filter((g) => g.status === "open" || g.status === "suggested").length,
+    suggested_answers: gs.filter((g) => g.status === "suggested").length,
+    filled_total: gs.filter((g) => g.status === "filled").length + (slug === "payments" ? 7 : 0),
+    unedited_rate: rate,
+    unedited_rate_before: before,
+  };
+}
+
+function findGap(id: string): [string, Gap] {
+  for (const [slug, list] of Object.entries(state.learning.gaps)) {
+    const g = list.find((x) => x.id === id);
+    if (g) return [slug, g];
+  }
+  throw new ApiError(404, "That question doesn't exist.");
+}
+
 function askAnswer(slug: string, question: string): AskResult {
   const ql = question.toLowerCase();
   const docs = state.knowledge[slug] ?? [];
@@ -180,7 +226,9 @@ function askAnswer(slug: string, question: string): AskResult {
   const visible = scored.filter((x) => x.d.label === "public" || x.d.label === "internal");
   const hidden = scored.length - visible.length + (/(pci|secret|access|scope|key)/.test(ql) ? 1 : 0);
   if (!visible.length) {
+    if (!hidden) logGap(slug, question);
     return {
+      open_question: !hidden,
       answer: hidden
         ? "I found docs on this, but they're labeled above what this audience can see. Ask the team directly and I'll pass it on."
         : `I don't have a doc that answers that yet. I've noted the question for ${team(slug).name}.`,
@@ -484,6 +532,47 @@ const routes: [Method, RegExp, Handler][] = [
     emit({ team_slug: t.slug, kind: "knowledge", icon: "📚", text: `${t.steward.name} learned a new doc: ${d.title}.`, link: `/teams/${t.slug}/knowledge` });
     return d;
   }],
+  ["GET", /^\/api\/teams\/([\w-]+)\/learning$/, (m) => {
+    const slug = team(m[1]).slug;
+    const order = (g: Gap) => (g.status === "suggested" ? 0 : g.status === "open" ? 1 : 2);
+    return {
+      stats: learningStats(slug),
+      lessons: [...(state.learning.lessons[slug] ?? [])].sort((a, b) => Number(b.active) - Number(a.active)),
+      gaps: [...(state.learning.gaps[slug] ?? [])].sort((a, b) => order(a) - order(b) || b.count - a.count),
+    };
+  }],
+  ["POST", /^\/api\/teams\/([\w-]+)\/lessons$/, (m, b) => {
+    const t = team(m[1]);
+    const rule = (body<{ rule: string }>(b).rule ?? "").trim();
+    if (!rule) throw new ApiError(400, "A rule needs some words.");
+    const l: Lesson = { id: nid("ls"), kind: "rule", headline: rule, situation: "", before: "", after: "", note: rule, label: "internal", source: "teach", author: user.name, active: true, uses: 0, last_used_at: null, created_at: now() };
+    (state.learning.lessons[t.slug] ??= []).unshift(l);
+    emit({ team_slug: t.slug, kind: "learning", icon: "🧠", text: `${t.steward.name} learned a rule from ${user.name}: ${rule}`, link: `/teams/${t.slug}/learning` });
+    audit(user.email, "lesson.add", l.id, rule, t.slug);
+    return l;
+  }],
+  ["PATCH", /^\/api\/lessons\/(\w+)$/, (m, b) => {
+    const l = Object.values(state.learning.lessons).flat().find((x) => x.id === m[1]);
+    if (!l) throw new ApiError(404, "That lesson doesn't exist.");
+    l.active = !!body<{ active: boolean }>(b).active;
+    return l;
+  }],
+  ["POST", /^\/api\/gaps\/(\w+)\/fill$/, (m, b) => {
+    const [slug, g] = findGap(m[1]);
+    const p = body<{ content?: string; title?: string; label: Label }>(b);
+    const content = (p.content ?? g.suggested_answer ?? "").trim();
+    if (!content) throw new ApiError(400, "Write an answer first.");
+    const d: KnowledgeDoc = { id: nid("kd"), title: p.title || g.question, source: "Answered in Keel", label: p.label, updated_at: now(), snippet: content.slice(0, 180), chars: content.length };
+    (state.knowledge[slug] ??= []).unshift(d);
+    Object.assign(g, { status: "filled", doc_id: d.id, closed_by: user.name, closed_at: now() });
+    emit({ team_slug: slug, kind: "knowledge", icon: "📚", text: `${team(slug).steward.name} learned the answer to “${g.question}”.`, link: `/teams/${slug}/knowledge` });
+    return { gap: g, doc: d };
+  }],
+  ["POST", /^\/api\/gaps\/(\w+)\/dismiss$/, (m) => {
+    const [, g] = findGap(m[1]);
+    Object.assign(g, { status: "dismissed", closed_by: user.name, closed_at: now() });
+    return g;
+  }],
   ["POST", /^\/api\/teams\/([\w-]+)\/ask$/, (m, b) => askAnswer(team(m[1]).slug, body<{ question: string }>(b).question ?? "")],
   ["GET", /^\/api\/teams\/([\w-]+)\/services$/, (m) => state.services[team(m[1]).slug] ?? []],
   ["POST", /^\/api\/teams\/([\w-]+)\/services$/, (m, b) => {
@@ -630,6 +719,13 @@ function decide(id: string, to: "approved" | "rejected", edited?: string, reason
     } else o.status = "rejected";
   }
   if (to === "approved" && state.levels[a.team_slug]) state.levels[a.team_slug].samples += 1;
+  const lesson = (kind: Lesson["kind"], f: Partial<Lesson>) => {
+    const base = { situation: a.title, before: a.preview, after: "", note: "", ...f };
+    (state.learning.lessons[a.team_slug] ??= []).unshift({ id: nid("ls"), kind, label: a.label, source: `approval:${a.id}`, author: user.name, active: true, uses: 0, last_used_at: null, created_at: now(), ...base, headline: D.lessonHeadline({ kind, ...base }) });
+    emit({ team_slug: a.team_slug, kind: "learning", icon: "🧠", text: `${st.name} learned from ${user.name}: ${D.lessonHeadline({ kind, ...base })}`, link: `/teams/${a.team_slug}/learning` });
+  };
+  if (to === "approved" && edited !== undefined) lesson("reply", { after: edited });
+  if (to === "rejected" && reason?.trim()) lesson("reply", { note: reason.trim() });
   audit(user.email, `approval.${to === "approved" ? "approve" : "reject"}`, id, edited !== undefined ? "Approved with edits" : reason ?? (to === "approved" ? "Approved unchanged" : "Rejected"), a.team_slug);
   emit({ team_slug: a.team_slug, kind: "approval", icon: to === "approved" ? "👍" : "✋", text: `${user.name} ${to} "${a.title}". ${to === "approved" ? `${st.name} is sending it.` : `${st.name} won't send it.`}`, link: a.commitment_key ? `/commitments/${a.commitment_key}` : "/approvals" });
   return a;

@@ -19,7 +19,7 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy import orm
 
-from keel import connections, db, errors, feed, jobs, labels, levels, models
+from keel import connections, db, errors, feed, jobs, labels, learning, levels, models
 from keel.connectors import base
 
 log = logging.getLogger(__name__)
@@ -43,6 +43,10 @@ KIND_TITLES: dict[str, str] = {
 }
 
 TERMINAL = ("done", "reconciled", "failed", "rejected")
+CONTEXT_CHARS = 2000  # The triggering message kept with a write; a lesson clips it further.
+# Failures that mean the steward chose a bad target or body. Auth, permission, rate and network failures are
+# setup or weather problems, so they don't count against its level.
+STEWARD_FAULT_ERRORS = frozenset({errors.BAD_REQUEST, errors.NOT_FOUND})
 
 
 @dataclasses.dataclass
@@ -62,6 +66,7 @@ class Proposal:
     actor: str = "steward"  # "steward" or "user:<email>"
     idempotent: bool = False
     preview: str | None = None
+    context: str | None = None  # The message that led to it; edits and rejections learn from this.
 
 
 def steward_for(session: orm.Session, team_id: str) -> models.Steward:
@@ -157,6 +162,7 @@ def propose(session: orm.Session, p: Proposal) -> models.Operation:
         status="intent_recorded",
         commitment_id=p.commitment.id if p.commitment else None,
         created_by=p.actor,
+        context=p.context[:CONTEXT_CHARS] if p.context else None,
     )
     session.add(op)
     session.flush()
@@ -237,6 +243,7 @@ def approve(
     if approval.status != "pending":
         raise ValueError(f"This approval is already {approval.status}.")
     op = approval.operation
+    before = approval.preview
     edited = edited_preview is not None and edited_preview.strip() != approval.preview.strip()
     if edited:
         key = _body_key(op.payload)
@@ -252,6 +259,8 @@ def approve(
     approval.status, approval.decided_by, approval.decided_at = "approved", user.email, models.utcnow()
     steward = steward_for(session, op.team_id)
     levels.record_sample(session, steward, op.kind, "edited" if edited else "approved")
+    if edited:
+        learning.from_approval(session, approval, before, user.name)
     _queue_dispatch(session, op)
     feed.audit(
         session,
@@ -285,6 +294,7 @@ def reject(
     op.status, op.error_line = "rejected", f"Rejected by {user.name}" + (f": {reason}" if reason else ".")
     steward = steward_for(session, op.team_id)
     levels.record_sample(session, steward, op.kind, "rejected")
+    learning.from_rejection(session, approval, reason, user.name)
     feed.audit(session, op.org_id, f"user:{user.email}", "approval.rejected", op.op_id, reason, op.team_id)
     feed.activity(
         session,
@@ -438,6 +448,8 @@ def _on_error(s: orm.Session, op: models.Operation, exc: errors.ConnectorError) 
         return
     op.status = "failed"
     feed.OPS_TOTAL.labels(kind=op.kind, status="failed").inc()
+    if op.created_by == "steward" and exc.error_class in STEWARD_FAULT_ERRORS:
+        levels.record_sample(s, steward_for(s, op.team_id), op.kind, "error")
     if exc.error_class == errors.AUTH_INVALID:
         connections.mark(s, op.org_id, op.kind.split(".")[0], "error", exc.line)
     feed.activity(

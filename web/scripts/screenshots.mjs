@@ -37,12 +37,32 @@ const shots = [
   },
   { name: "team-services", path: "/teams/payments/services", full: true },
   { name: "team-knowledge", path: "/teams/payments/knowledge" },
+  { name: "team-learning", path: "/teams/payments/learning", full: true },
+  {
+    name: "team-learning-diff",
+    path: "/teams/payments/learning",
+    act: async (p) => {
+      await p.getByRole("button", { name: /A better reply to/ }).click();
+      await sleep(500);
+    },
+  },
+  { name: "team-learning-empty", path: "/teams/mobile/learning" },
   { name: "team-level", path: "/teams/payments/level" },
   { name: "team-settings", path: "/teams/platform/settings" },
   { name: "ledger", path: "/ledger", full: true },
   { name: "ledger-board", path: "/ledger?view=board", full: true },
   { name: "commitment", path: "/commitments/C-88", full: true },
   { name: "approvals", path: "/approvals", full: true },
+  {
+    name: "approvals-rejecting",
+    path: "/approvals",
+    act: async (p) => {
+      await p.keyboard.press("r");
+      await sleep(300);
+      await p.getByRole("button", { name: "Wrong team" }).first().click();
+      await sleep(300);
+    },
+  },
   {
     name: "approvals-editing",
     path: "/approvals",

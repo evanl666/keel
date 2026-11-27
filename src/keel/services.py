@@ -135,7 +135,7 @@ def _open(
         "service",
         "🔴",
         f"{svc.name} is down. {st.name} opened {c.key}.",
-        f"/teams/{team.slug}?tab=services",
+        f"/teams/{team.slug}/services",
     )
     runbooks = ", ".join(r["name"] for r in svc.runbooks) or "none"
     text = (
@@ -168,7 +168,7 @@ def _resolve(
         "service",
         "🟢",
         f"{svc.name} is back after {minutes} min.",
-        f"/teams/{team.slug}?tab=services",
+        f"/teams/{team.slug}/services",
     )
     steward.say(
         session,
@@ -238,7 +238,7 @@ def add(
         "service",
         "🩺",
         f"Now watching {svc.name} for {team.name}",
-        f"/teams/{team.slug}?tab=services",
+        f"/teams/{team.slug}/services",
     )
     return svc
 

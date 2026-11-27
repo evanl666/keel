@@ -24,6 +24,7 @@ from keel import (
     feed,
     knowledge,
     labels,
+    learning,
     ledger,
     llm,
     models,
@@ -141,16 +142,19 @@ def build(email: str = "") -> mcpserver.MCPServer:
             t = _team(s, ident, team)
             found = knowledge.search(s, [t.id], question, steward.clearance_for(s, ident.user(s), t))
             st = s.scalar(sa.select(models.Steward).where(models.Steward.team_id == t.id))
-            text = brain.answer(
+            reply = learning.answer(
+                s,
+                t,
                 llm.for_org(s, ident.org_id),
                 question,
                 found,
                 steward=st.name if st else "Steward",
-                team=t.name,
+                asked_by=ident.actor,
             )
             feed.audit(s, ident.org_id, ident.actor, "mcp.ask", t.slug, question[:200], t.id)
             return {
-                "answer": text,
+                "answer": reply.text,
+                "open_question": reply.gap is not None,
                 "sources": [p.title for p in found.passages],
                 "withheld_sources": found.withheld,
             }

@@ -257,6 +257,8 @@ class Operation(Base):
     updated_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow, onupdate=utcnow)
     lease_until: orm.Mapped[dt.datetime | None] = orm.mapped_column(nullable=True)
     next_attempt_at: orm.Mapped[dt.datetime | None] = orm.mapped_column(nullable=True)
+    # The message that led to this write, so a person's edit or rejection can become a lesson.
+    context: orm.Mapped[str | None] = orm.mapped_column(sa.Text, nullable=True)
 
 
 class Approval(Base):
@@ -289,6 +291,51 @@ class KnowledgeDoc(Base):
     content: orm.Mapped[str] = orm.mapped_column(sa.Text)
     created_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
     updated_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class Lesson(Base):
+    """Something a team taught its steward: a corrected draft, a rejected one, a triage fix, or a rule."""
+
+    __tablename__ = "lessons"
+    id: IdCol = id_column()
+    org_id: orm.Mapped[str] = org_fk()
+    team_id: orm.Mapped[str] = team_fk()
+    kind: orm.Mapped[str] = orm.mapped_column(sa.String(20))  # reply | triage | rule
+    situation: orm.Mapped[str] = orm.mapped_column(sa.Text, default="")
+    before: orm.Mapped[str] = orm.mapped_column(sa.Text, default="")
+    after: orm.Mapped[str] = orm.mapped_column(sa.Text, default="")
+    note: orm.Mapped[str] = orm.mapped_column(sa.Text, default="")
+    label: orm.Mapped[str] = orm.mapped_column(sa.String(20), default="internal")
+    source: orm.Mapped[str] = orm.mapped_column(sa.String(200), default="")
+    author: orm.Mapped[str] = orm.mapped_column(sa.String(200))
+    active: orm.Mapped[bool] = orm.mapped_column(default=True, index=True)
+    uses: orm.Mapped[int] = orm.mapped_column(default=0)
+    last_used_at: orm.Mapped[dt.datetime | None] = orm.mapped_column(nullable=True)
+    created_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
+    updated_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class KnowledgeGap(Base):
+    """A question the steward couldn't answer from the team's notes, and what people said since."""
+
+    __tablename__ = "knowledge_gaps"
+    id: IdCol = id_column()
+    org_id: orm.Mapped[str] = org_fk()
+    team_id: orm.Mapped[str] = team_fk()
+    question: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    asked_by: orm.Mapped[str] = orm.mapped_column(sa.String(200), default="")
+    count: orm.Mapped[int] = orm.mapped_column(default=1)
+    thread_ref: orm.Mapped[str | None] = orm.mapped_column(sa.String(200), nullable=True, index=True)
+    status: orm.Mapped[str] = orm.mapped_column(sa.String(20), default="open", index=True)
+    suggested_answer: orm.Mapped[str | None] = orm.mapped_column(sa.Text, nullable=True)
+    suggested_by: orm.Mapped[str | None] = orm.mapped_column(sa.String(200), nullable=True)
+    doc_id: orm.Mapped[str | None] = orm.mapped_column(
+        sa.String(32), sa.ForeignKey("knowledge_docs.id", ondelete="SET NULL"), nullable=True
+    )
+    closed_by: orm.Mapped[str | None] = orm.mapped_column(sa.String(200), nullable=True)
+    created_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
+    last_asked_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
+    closed_at: orm.Mapped[dt.datetime | None] = orm.mapped_column(nullable=True)
 
 
 class Canary(Base):

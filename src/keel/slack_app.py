@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import functools
 import logging
+import re
 import typing
 
 import sqlalchemy as sa
 
-from keel import connections, db, inbox, ledger, models
+from keel import connections, db, inbox, learning, ledger, models
 
 log = logging.getLogger(__name__)
 USER_CACHE_SIZE = 2048  # Display names for one org's active Slack users; small and saves a call per message.
@@ -91,6 +92,14 @@ class SlackBridge:
                 ]
                 lines += [f"• {c.key} {c.title} ({ledger.risk(c).replace('_', ' ')})" for c in risky[:5]]
                 ack("\n".join(lines))
+                return
+            if re.match(r"teach\b", text, re.IGNORECASE):
+                rule = text[len("teach") :].strip(" :")
+                if not rule:
+                    ack("Tell me the rule, e.g. `/keel teach Reply in Chinese when asked in Chinese.`")
+                    return
+                learning.teach(s, team, rule, self._name(command.get("user_id", "")))
+                ack(f"{st.emoji} Got it. I'll follow that from now on: {rule}")
                 return
             ack(f"{st.emoji} On it.")
             inbox.record(

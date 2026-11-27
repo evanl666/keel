@@ -17,6 +17,7 @@ from keel import (
     jobs,
     knowledge,
     labels,
+    learning,
     ledger,
     levels,
     models,
@@ -391,6 +392,7 @@ def patch_commitment(key: str, body: CommitmentPatch, s: deps.Session, u: deps.U
     team = s.get(models.Team, c.owner_team_id)
     fields = body.model_dump(exclude_unset=True)
     clear_due = "due_at" in fields and not body.due_at
+    was = learning.Snapshot.of(c)
     ledger.update(
         s,
         c,
@@ -402,6 +404,7 @@ def patch_commitment(key: str, body: CommitmentPatch, s: deps.Session, u: deps.U
         note=body.note,
         clear_due=clear_due,
     )
+    learning.from_commitment_change(s, c, was, u.name, note=body.note)
     feed.audit(
         s,
         u.org_id,
@@ -537,21 +540,113 @@ class Ask(pydantic.BaseModel):
 
 @router.post("/teams/{slug}/ask")
 def ask(slug: str, body: Ask, s: deps.Session, u: deps.User) -> dict:
-    """Ask the team's knowledge a question. Restricted sources are withheld and counted."""
-    from keel import brain, llm
+    """Ask the team's knowledge a question. Restricted sources are withheld and counted.
+
+    When the notes don't cover it, the question is logged as one of the team's open questions.
+    """
+    from keel import llm
 
     team = deps.team_or_404(s, u, slug)
     if not body.question.strip():
         raise ValueError("Ask a question first.")
     found = knowledge.search(s, [team.id], body.question, steward.clearance_for(s, u, team))
     st = gateway.steward_for(s, team.id)
-    text = brain.answer(llm.for_org(s, u.org_id), body.question, found, steward=st.name, team=team.name)
+    reply = learning.answer(
+        s, team, llm.for_org(s, u.org_id), body.question, found, steward=st.name, asked_by=u.name
+    )
     return {
-        "answer": text,
+        "answer": reply.text,
+        "open_question": reply.gap is not None,
         "label": found.label,
         "withheld": found.withheld,
         "sources": [{"title": p.title, "source": p.source, "label": p.label} for p in found.passages],
     }
+
+
+LESSON_LIST_LIMIT = 200  # Matches learning.MAX_ACTIVE_LESSONS; switched-off ones beyond that are history.
+GAP_LIST_LIMIT = 100  # Closed questions beyond this are in the audit log.
+
+
+@router.get("/teams/{slug}/learning")
+def get_learning(slug: str, s: deps.Session, u: deps.User) -> dict:
+    """What the steward has learned: stats, lessons (within the person's clearance) and open questions."""
+    team = deps.team_or_404(s, u, slug)
+    clearance = steward.clearance_for(s, u, team)
+    lessons = s.scalars(
+        sa.select(models.Lesson)
+        .where(models.Lesson.team_id == team.id)
+        .order_by(models.Lesson.active.desc(), models.Lesson.updated_at.desc())
+        .limit(LESSON_LIST_LIMIT)
+    )
+    gaps = s.scalars(
+        sa.select(models.KnowledgeGap)
+        .where(models.KnowledgeGap.team_id == team.id)
+        .order_by(
+            models.KnowledgeGap.status.in_(learning.OPEN_GAP_STATUSES).desc(),
+            models.KnowledgeGap.count.desc(),
+            models.KnowledgeGap.last_asked_at.desc(),
+        )
+        .limit(GAP_LIST_LIMIT)
+    )
+    return {
+        "stats": learning.stats(s, team),
+        "lessons": [serial.lesson(r) for r in lessons if labels.audience_allows(clearance, r.label)],
+        "gaps": [serial.gap(g) for g in gaps],
+    }
+
+
+class NewRule(pydantic.BaseModel):
+    rule: str
+
+
+@router.post("/teams/{slug}/lessons")
+def post_rule(slug: str, body: NewRule, s: deps.Session, u: deps.User) -> dict:
+    """Teach the steward a rule in plain words."""
+    team = deps.team_or_404(s, u, slug)
+    deps.require_team_member(s, u, team.id, "teach its steward")
+    return serial.lesson(learning.teach(s, team, body.rule, u.name))
+
+
+class LessonPatch(pydantic.BaseModel):
+    active: bool
+
+
+@router.patch("/lessons/{lesson_id}")
+def patch_lesson(lesson_id: str, body: LessonPatch, s: deps.Session, u: deps.User) -> dict:
+    """Switch a lesson on or off."""
+    r = s.get(models.Lesson, lesson_id)
+    if r is None or r.org_id != u.org_id:
+        raise fastapi.HTTPException(404, "That lesson doesn't exist.")
+    deps.require_team_member(s, u, r.team_id, "change what its steward learned")
+    return serial.lesson(learning.set_active(s, r, body.active, f"user:{u.email}"))
+
+
+def _gap_or_404(s: sa.orm.Session, u: models.User, gap_id: str) -> models.KnowledgeGap:
+    g = s.get(models.KnowledgeGap, gap_id)
+    if g is None or g.org_id != u.org_id:
+        raise fastapi.HTTPException(404, "That question doesn't exist.")
+    deps.require_team_member(s, u, g.team_id, "answer its questions")
+    return g
+
+
+class GapFill(pydantic.BaseModel):
+    content: str | None = None
+    title: str | None = None
+    label: str = "internal"
+
+
+@router.post("/gaps/{gap_id}/fill")
+def fill_gap(gap_id: str, body: GapFill, s: deps.Session, u: deps.User) -> dict:
+    """Save an answer to the team's knowledge (the suggested one by default) and close the question."""
+    g = _gap_or_404(s, u, gap_id)
+    doc = learning.fill(s, g, u, content=body.content, title=body.title, label=body.label)
+    return {"gap": serial.gap(g), "doc": serial.knowledge_doc(doc)}
+
+
+@router.post("/gaps/{gap_id}/dismiss")
+def dismiss_gap(gap_id: str, s: deps.Session, u: deps.User) -> dict:
+    """Close a question nobody needs answered."""
+    return serial.gap(learning.dismiss(s, _gap_or_404(s, u, gap_id), u))
 
 
 @router.get("/teams/{slug}/services")

@@ -14,6 +14,7 @@ import { TodayTab } from "./TodayTab";
 import { LedgerTab, ServicesTab } from "./SimpleTabs";
 import { FrontDeskTab } from "./FrontDeskTab";
 import { KnowledgeTab } from "./KnowledgeTab";
+import { LearningTab } from "./LearningTab";
 import { LevelTab } from "./LevelTab";
 import { SettingsTab } from "./SettingsTab";
 
@@ -23,6 +24,7 @@ const TABS = [
   { id: "front-desk", label: "Front desk" },
   { id: "services", label: "Services" },
   { id: "knowledge", label: "Knowledge" },
+  { id: "learning", label: "Learning" },
   { id: "level", label: "Level" },
   { id: "settings", label: "Settings" },
 ] as const;
@@ -214,6 +216,7 @@ export function TeamHome() {
         {active === "front-desk" && <FrontDeskTab t={t} />}
         {active === "services" && <ServicesTab t={t} />}
         {active === "knowledge" && <KnowledgeTab t={t} />}
+        {active === "learning" && <LearningTab t={t} />}
         {active === "level" && <LevelTab t={t} />}
         {active === "settings" && <SettingsTab t={t} />}
       </motion.div>
