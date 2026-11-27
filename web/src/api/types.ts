@@ -70,7 +70,9 @@ export type ActivityKind =
   | "knowledge"
   | "level"
   | "inbox"
-  | "chat";
+  | "chat"
+  | "learning"
+  | "promotion";
 
 export interface ActivityItem {
   id: string;
@@ -218,6 +220,65 @@ export interface AskResult {
   label: Label;
   sources: AskSource[];
   withheld: number;
+  /** True when the notes didn't cover it and the question was logged for the team. */
+  open_question?: boolean;
+}
+
+export type LessonKind = "reply" | "triage" | "rule";
+
+/** Something the steward learned from a correction or was taught outright. */
+export interface Lesson {
+  id: string;
+  kind: LessonKind;
+  headline: string;
+  situation: string;
+  before: string;
+  after: string;
+  note: string;
+  label: Label;
+  source: string;
+  author: string;
+  active: boolean;
+  uses: number;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export type GapStatus = "open" | "suggested" | "filled" | "dismissed";
+
+/** A question the notes couldn't answer. */
+export interface Gap {
+  id: string;
+  question: string;
+  asked_by: string;
+  count: number;
+  status: GapStatus;
+  suggested_answer: string | null;
+  suggested_by: string | null;
+  doc_id: string | null;
+  closed_by: string | null;
+  created_at: string;
+  last_asked_at: string;
+  closed_at: string | null;
+}
+
+export interface LearningStats {
+  lessons_active: number;
+  rules: number;
+  learned_this_week: number;
+  used_this_week: number;
+  open_questions: number;
+  suggested_answers: number;
+  filled_total: number;
+  /** Share of drafts sent without edits, last 30 days; null when there were none. */
+  unedited_rate: number | null;
+  unedited_rate_before: number | null;
+}
+
+export interface LearningInfo {
+  stats: LearningStats;
+  lessons: Lesson[];
+  gaps: Gap[];
 }
 
 export interface ServiceCheck {

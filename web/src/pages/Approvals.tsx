@@ -6,7 +6,7 @@ import { Check, X, Pencil, Users, Info, ArrowUpRight } from "lucide-react";
 import { api, errorLine } from "../api/client";
 import { useApprovals } from "../api/hooks";
 import type { Approval } from "../api/types";
-import { Button, Card, EmptyState, Kbd, PageHeader, SkeletonRows, Textarea } from "../components/ui";
+import { Button, Card, EmptyState, Input, Kbd, PageHeader, SkeletonRows, Textarea } from "../components/ui";
 import { LabelBadge, Markdown, StewardAvatar, useTeamMap } from "../components/keel";
 import { useHotkeys } from "../components/Layout";
 import { useToast } from "../components/toast";
@@ -22,6 +22,8 @@ const KIND_LABEL: Record<string, string> = {
 
 type Decision = { id: string; dir: 1 | -1 };
 
+const REJECT_REASONS = ["Not needed", "Wrong team", "Too long", "Wrong tone", "Not work"];
+
 const exitVariants = {
   exit: (dir: number) => ({ opacity: 0, x: dir * 160, scale: 0.96, transition: { duration: 0.32, ease: [0.4, 0, 1, 1] as const } }),
 };
@@ -35,6 +37,8 @@ export function Approvals() {
   const [sel, setSel] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   const [gone, setGone] = useState<Decision[]>([]);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -49,19 +53,27 @@ export function Approvals() {
   }, [current]);
 
   const decide = useMutation({
-    mutationFn: async ({ a, approve }: { a: Approval; approve: boolean }) => {
+    mutationFn: async ({ a, approve, reason }: { a: Approval; approve: boolean; reason?: string }) => {
       const edited = drafts[a.id];
-      return approve ? api.approve(a.id, edited !== undefined && edited !== a.preview ? edited : undefined) : api.reject(a.id);
+      return approve ? api.approve(a.id, edited !== undefined && edited !== a.preview ? edited : undefined) : api.reject(a.id, reason?.trim() || undefined);
     },
     onMutate: ({ a, approve }) => {
       setGone((g) => [...g, { id: a.id, dir: approve ? 1 : -1 }]);
       setEditing(null);
+      setRejecting(null);
     },
-    onSuccess: (res, { a, approve }) => {
-      const t = teams[a.team_slug];
+    onSuccess: (res, { a, approve, reason }) => {
+      const name = teams[a.team_slug]?.steward.name ?? "The steward";
+      const edited = drafts[a.id] !== undefined && drafts[a.id] !== a.preview;
       toast({
         title: approve ? `Approved: ${a.title}` : `Rejected: ${a.title}`,
-        line: approve ? `${t?.steward.name ?? "The steward"} is sending it now.` : `${t?.steward.name ?? "The steward"} won't send it.`,
+        line: approve
+          ? edited
+            ? `${name} is sending your version and will write it that way next time.`
+            : `${name} is sending it now.`
+          : reason?.trim()
+            ? `${name} won't send it, and learned why: ${reason.trim()}.`
+            : `${name} won't send it.`,
         icon: approve ? "👍" : "✋",
       });
       void res;
@@ -82,7 +94,7 @@ export function Approvals() {
   useHotkeys(
     {
       a: () => current && decide.mutate({ a: current, approve: true }),
-      r: () => current && decide.mutate({ a: current, approve: false }),
+      r: () => current && setRejecting(current.id),
       e: () => current && setEditing(current.id),
       j: () => setSel((s) => Math.min(visible.length - 1, s + 1)),
       k: () => setSel((s) => Math.max(0, s - 1)),
@@ -231,7 +243,7 @@ export function Approvals() {
                             </Button>
                           )}
                           <div className="ml-auto flex flex-wrap justify-end items-center gap-2">
-                            <Button variant="danger" icon={<X className="size-3.5" />} kbd={active ? "R" : undefined} onClick={(e) => { e.stopPropagation(); decide.mutate({ a, approve: false }); }}>
+                            <Button variant="danger" icon={<X className="size-3.5" />} kbd={active ? "R" : undefined} onClick={(e) => { e.stopPropagation(); setSel(i); setRejecting(rejecting === a.id ? null : a.id); }}>
                               Reject
                             </Button>
                             <Button variant="success" icon={<Check className="size-3.5" />} kbd={active ? "A" : undefined} onClick={(e) => { e.stopPropagation(); decide.mutate({ a, approve: true }); }}>
@@ -239,6 +251,44 @@ export function Approvals() {
                             </Button>
                           </div>
                         </div>
+                        <AnimatePresence initial={false}>
+                          {rejecting === a.id && (
+                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                              <form
+                                className="border-t border-line bg-bad/4 px-4 sm:px-5 py-3.5"
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  decide.mutate({ a, approve: false, reason: reasons[a.id] });
+                                }}
+                              >
+                                <div className="text-[12.5px] text-muted">
+                                  Why not? <span className="text-faint">{t?.steward.name ?? "The steward"} learns from the reason. Leave it empty to just reject.</span>
+                                </div>
+                                <div className="mt-2 flex gap-2">
+                                  <Input
+                                    autoFocus
+                                    value={reasons[a.id] ?? ""}
+                                    onChange={(e) => setReasons((r) => ({ ...r, [a.id]: e.target.value }))}
+                                    onKeyDown={(e) => e.key === "Escape" && setRejecting(null)}
+                                    placeholder="Payments doesn't own refunds, Billing does."
+                                    aria-label="Why reject"
+                                    className="flex-1"
+                                  />
+                                  <Button type="submit" variant="danger" icon={<X className="size-3.5" />}>
+                                    Reject
+                                  </Button>
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {REJECT_REASONS.map((r) => (
+                                    <button key={r} type="button" onClick={() => setReasons((x) => ({ ...x, [a.id]: r }))} className="h-7 max-sm:h-9 px-2.5 rounded-full border border-line bg-panel text-[12px] text-muted hover:text-fg hover:border-line-strong transition-colors cursor-pointer">
+                                      {r}
+                                    </button>
+                                  ))}
+                                </div>
+                              </form>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </Card>
                     </motion.div>
                   );
@@ -281,6 +331,9 @@ export function Approvals() {
             </p>
             <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
               Edits are sent exactly as you write them. Rejected drafts are never sent.
+            </p>
+            <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
+              Your edits and reasons teach the steward. See what it learned on each team's Learning tab.
             </p>
           </Card>
         </aside>

@@ -6,6 +6,7 @@ call fails. The demo runs entirely on the rules.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import json
 import logging
@@ -117,7 +118,7 @@ UPDATE_RE = re.compile(
 INCIDENT_RE = re.compile(
     r"\b(is down|outage|5\d\d errors?|error rate|paging|sev ?[12]|incident|broken in prod)\b", re.IGNORECASE
 )
-QUESTION_RE = re.compile(r"\?\s*$|^(who|what|where|when|why|how|is|are|does|do|can)\b", re.IGNORECASE)
+QUESTION_RE = re.compile(r"[?？]\s*$|^(who|what|where|when|why|how|is|are|does|do|can)\b", re.IGNORECASE)
 STATUS_WORDS = {
     "done": "done",
     "shipped": "done",
@@ -228,8 +229,12 @@ def triage(
     tz: str = "UTC",
     team_slugs: tuple[str, ...] = (),
     open_keys: tuple[str, ...] = (),
+    lessons: str = "",
 ) -> Triage:
-    """Classify with the model; fall back to rules if there is no model or the call fails."""
+    """Classify with the model; fall back to rules if there is no model or the call fails.
+
+    ``lessons`` is a prompt section from :func:`keel.learning.render` ("" for none); rules mode ignores it.
+    """
     if model is None:
         return rule_triage(text, now, tz, team_slugs)
     local = now.astimezone(zoneinfo.ZoneInfo(tz))
@@ -242,6 +247,8 @@ def triage(
         teams=", ".join(team_slugs) or "none",
         open_keys=", ".join(open_keys[:40]) or "none",
     )
+    if lessons:
+        prompt += "\n\n" + lessons
     try:
         result = model.with_structured_output(Triage).invoke(
             [{"role": "system", "content": prompt}, {"role": "user", "content": text}]
@@ -254,13 +261,64 @@ def triage(
         return rule_triage(text, now, tz, team_slugs)
 
 
+NO_ANSWER = "[[no-answer]]"  # The model starts its reply with this when the passages don't answer it.
+SNIPPET_CHARS = 420  # Rules-mode answers quote about one paragraph of the best passage.
+
 ANSWER_PROMPT = """You are {steward}, the steward of the {team} team, answering at the team's front desk.
-Answer only from the passages below. If they don't contain the answer, say so in one sentence and offer to
-log the question for the team. Cite passage titles in brackets like [Runbook: payments]. Two to five short
-sentences, plain and calm.
+Answer only from the passages below. If they don't contain the answer, start your reply with {marker} and say
+so in one sentence. Cite passage titles in brackets like [Runbook: payments]. Two to five short sentences,
+plain and calm.
 
 Passages:
 {passages}"""
+
+
+@dataclasses.dataclass(frozen=True)
+class Answered:
+    """A front-desk answer, and whether the team's notes actually covered the question."""
+
+    text: str
+    known: bool
+
+
+def answer_full(
+    model: language_models.BaseChatModel | None,
+    question: str,
+    found: knowledge.SearchResult,
+    *,
+    steward: str,
+    team: str,
+    lessons: str = "",
+) -> Answered:
+    """Answer from visible passages only, and say whether they covered it (``known``).
+
+    With no passages it's unknown without a model call. Rules mode counts any passage as known; a model says
+    "unknown" with :data:`NO_ANSWER`, which is stripped from the text.
+    """
+    if not found.passages:
+        return Answered(f"I don't have anything on that in {team}'s notes yet.", known=False)
+    if model is None:
+        best = found.passages[0]
+        snippet = best.text.strip().replace("\n", " ")
+        if len(snippet) > SNIPPET_CHARS:
+            snippet = snippet[:SNIPPET_CHARS].rsplit(" ", 1)[0] + "…"
+        return Answered(f"From [{best.title}]: {snippet}", known=True)
+    ctx = "\n\n".join(f"[{p.title}] (label: {p.label})\n{p.text}" for p in found.passages)
+    system = ANSWER_PROMPT.format(steward=steward, team=team, passages=ctx, marker=NO_ANSWER)
+    if lessons:
+        system += "\n\n" + lessons
+    try:
+        reply = model.invoke([{"role": "system", "content": system}, {"role": "user", "content": question}])
+        feed.MODEL_CALLS.labels(purpose="answer", outcome="ok").inc()
+    except Exception as exc:
+        log.warning("answer model call failed, using rules: %s", exc)
+        feed.MODEL_CALLS.labels(purpose="answer", outcome="error").inc()
+        return answer_full(None, question, found, steward=steward, team=team)
+    text = str(reply.content).strip()
+    if NO_ANSWER not in text:
+        return Answered(text, known=True)
+    text = text.replace(NO_ANSWER, "").strip()
+    return Answered(text or f"I don't have anything on that in {team}'s notes yet.", known=False)
 
 
 def answer(
@@ -271,29 +329,9 @@ def answer(
     steward: str,
     team: str,
 ) -> str:
-    """Answer a question from visible passages only."""
-    if not found.passages:
-        return f"I don't have anything on that in {team}'s notes yet. I can log the question for the team."
-    if model is None:
-        best = found.passages[0]
-        snippet = best.text.strip().replace("\n", " ")
-        if len(snippet) > 420:
-            snippet = snippet[:420].rsplit(" ", 1)[0] + "…"
-        return f"From [{best.title}]: {snippet}"
-    ctx = "\n\n".join(f"[{p.title}] (label: {p.label})\n{p.text}" for p in found.passages)
-    try:
-        reply = model.invoke(
-            [
-                {"role": "system", "content": ANSWER_PROMPT.format(steward=steward, team=team, passages=ctx)},
-                {"role": "user", "content": question},
-            ]
-        )
-        feed.MODEL_CALLS.labels(purpose="answer", outcome="ok").inc()
-        return str(reply.content).strip()
-    except Exception as exc:
-        log.warning("answer model call failed, using rules: %s", exc)
-        feed.MODEL_CALLS.labels(purpose="answer", outcome="error").inc()
-        return answer(None, question, found, steward=steward, team=team)
+    """Answer a question from visible passages only, offering to log it when the notes don't cover it."""
+    a = answer_full(model, question, found, steward=steward, team=team)
+    return a.text if a.known else f"{a.text} I can log the question for the team."
 
 
 HEADLINE_PROMPT = """You are {steward}, steward of the {team} team. Write the opening of today's brief: at most

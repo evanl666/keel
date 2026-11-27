@@ -9,7 +9,9 @@ import type {
   Commitment,
   CommitmentEvent,
   Duty,
+  Gap,
   KnowledgeDoc,
+  Lesson,
   Level,
   LevelInfo,
   Operation,
@@ -441,6 +443,52 @@ export function makeBriefs(): Record<string, Brief[]> {
 - Release train cuts Monday. Nothing blocks it.`,
       },
     ],
+  };
+}
+
+export function lessonHeadline(l: Pick<Lesson, "kind" | "situation" | "after" | "note">): string {
+  const q = l.situation.length > 80 ? `${l.situation.slice(0, 79)}…` : l.situation;
+  if (l.kind === "rule") return l.note;
+  if (l.kind === "triage" && l.after === "Not work to log.") return `“${q}” isn't work to log`;
+  if (l.kind === "triage") return `Read “${q}” as: ${l.after}`;
+  if (l.after) return `A better reply to “${q}”`;
+  return `Don't reply to “${q}” like that${l.note ? `: ${l.note}` : ""}`;
+}
+
+export function makeLearning(): { lessons: Record<string, Lesson[]>; gaps: Record<string, Gap[]> } {
+  const l = (id: string, kind: Lesson["kind"], author: string, created: number, uses: number, f: Partial<Lesson>): Lesson => {
+    const base = { situation: "", before: "", after: "", note: "", ...f };
+    return {
+      id, kind, author, uses, label: "internal", source: kind === "rule" ? "teach" : kind === "triage" ? "commitment:C-90" : "approval:ap_0", active: true,
+      last_used_at: uses ? ago(Math.min(created, 3 * HOUR)) : null, created_at: ago(created), ...base,
+      headline: lessonHeadline({ kind, ...base }),
+    };
+  };
+  const g = (id: string, question: string, asked_by: string, count: number, last: number, suggested?: [string, string]): Gap => ({
+    id, question, asked_by, count, status: suggested ? "suggested" : "open", suggested_answer: suggested?.[1] ?? null, suggested_by: suggested?.[0] ?? null,
+    doc_id: null, closed_by: null, created_at: ago(last + 3 * DAY), last_asked_at: ago(last), closed_at: null,
+  });
+  return {
+    lessons: {
+      payments: [
+        l("ls_1", "reply", "Lena Ortiz", 12 * HOUR, 0, { situation: "can you post this week's refund numbers for finance?", before: "Refunds this week: 412 for $38,910, up 6% on last week.", note: "Finance numbers go to Lena first, never straight to the channel." }),
+        l("ls_2", "triage", "Jonas Berg", 1 * DAY, 1, { situation: "we'll have the payout retry fix out by EOW", before: "Logged: Ship payout retry fix", after: "due Fri (I had Sun)" }),
+        l("ls_3", "triage", "Lena Ortiz", 2 * DAY, 2, { situation: "lol I'll fix the coffee machine by Friday", before: "Logged as work: Fix the coffee machine", after: "Not work to log.", note: "a joke" }),
+        l("ls_4", "reply", "Maya Patel", 3 * DAY, 6, { situation: "when does the PCI scan window open?", before: "The PCI scan window opens next Monday at 9am PT. Let me know if you need anything else!", after: "PCI scan window: Mon 9:00 PT. Steps in [Runbook: PCI scan]." }),
+        l("ls_5", "rule", "Jonas Berg", 5 * DAY, 23, { note: "Keep channel replies to two sentences. Link the runbook instead of pasting it." }),
+        l("ls_6", "rule", "Maya Patel", 12 * DAY, 64, { note: "Tag @payments-oncall on anything about webhooks or payouts." }),
+      ],
+      platform: [l("ls_7", "rule", "Sam Okafor", 9 * DAY, 31, { note: "Always include the Grafana link when talking about latency." })],
+      mobile: [],
+    },
+    gaps: {
+      payments: [
+        g("gp_1", "How do we rotate the Adyen API key?", "Jonas Berg", 3, 10 * HOUR),
+        g("gp_2", "Who approves refunds over $10k?", "Ravi Kumar", 2, 29 * HOUR, ["Lena Ortiz", "Refunds over $10k need sign-off from Maya or Lena. Post the ticket in #payments-approvals and tag both of us; one approval is enough."]),
+      ],
+      platform: [g("gp_3", "What's the max replica count for the API pods?", "Kai Tanaka", 1, 60 * HOUR)],
+      mobile: [],
+    },
   };
 }
 

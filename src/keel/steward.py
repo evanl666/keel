@@ -18,7 +18,7 @@ from langchain_core import language_models
 from langchain_core import tools as lc_tools
 from sqlalchemy import orm
 
-from keel import brain, feed, gateway, knowledge, labels, ledger, llm, models
+from keel import brain, feed, gateway, knowledge, labels, learning, ledger, llm, models
 
 log = logging.getLogger(__name__)
 
@@ -85,8 +85,12 @@ def say(
     commitment: models.Commitment | None = None,
     label: str = "internal",
     extra: dict[str, typing.Any] | None = None,
+    context: str | None = None,
 ) -> models.Operation | None:
-    """Propose a message in the team's channel through the gateway. None when the team has no channel."""
+    """Propose a message in the team's channel through the gateway. None when the team has no channel.
+
+    ``context`` is the message being answered; if a person edits or rejects the draft, the lesson keeps it.
+    """
     org = session.get(models.Org, team.org_id)
     demo = bool(org and org.settings.get("demo"))
     if not team.slack_channel_id and not demo:
@@ -109,6 +113,7 @@ def say(
             audience=channel_label(team),
             commitment=commitment,
             idempotent=False,
+            context=context,
         ),
     )
 
@@ -154,6 +159,7 @@ def ask_team(
             audience_kind="org",
             audience=f"{target.name} team",
             idempotent=True,
+            context=detail or title,
         ),
     )
 
@@ -182,10 +188,21 @@ def handle_message(
     thread_ts: str | None = None,
     model: language_models.BaseChatModel | None = None,
     directed: bool = False,
+    channel: str | None = None,
+    in_thread: bool = False,
 ) -> Handled:
-    """Triage one channel message and act on it. ``directed`` = the steward was @-mentioned or DM'd."""
+    """Triage one channel message and act on it. ``directed`` = the steward was @-mentioned or DM'd.
+
+    ``channel`` and ``in_thread`` let a teammate's reply under an open question become its suggested answer.
+    The team's lessons shape triage and answers (see :mod:`keel.learning`).
+    """
     steward = gateway.steward_for(session, team.id)
+    thread_ref = f"{channel}:{thread_ts}" if channel and thread_ts else None
+    harvested = (
+        learning.harvest(session, team, thread_ref, text, person) if in_thread and thread_ref else None
+    )
     open_keys = tuple(c.key for c in ledger.open_for_team(session, team.id))
+    lessons = learning.relevant(session, team.id, text, labels.audience_max_for_target("team"))
     t = brain.triage(
         model,
         text,
@@ -195,7 +212,13 @@ def handle_message(
         tz=team.timezone,
         team_slugs=other_team_slugs(session, team),
         open_keys=open_keys,
+        lessons=learning.render(lessons),
     )
+    threshold = learning.NOT_WORK_MATCH if model is not None else learning.NOT_WORK_MATCH_RULES
+    if t.kind in ("request", "promise") and learning.not_work_match(lessons, text, threshold):
+        t = brain.Triage(kind="chatter")
+    if harvested is not None and t.kind in ("chatter", "question"):
+        return Handled(outcome="gap_answer")
     handled = Handled(outcome=t.kind)
     if steward.level == 0:
         # Observe: keep the ledger, send nothing.
@@ -248,7 +271,17 @@ def handle_message(
             handled.reply = f"I can't find {t.commitment_key}." if c is None else None
     elif t.kind == "question" and directed:
         found = knowledge.search(session, [team.id], text, labels.audience_max_for_target("team"))
-        handled.reply = brain.answer(model, text, found, steward=steward.name, team=team.name)
+        handled.reply = learning.answer(
+            session,
+            team,
+            model,
+            text,
+            found,
+            steward=steward.name,
+            asked_by=person or "",
+            thread_ref=thread_ref,
+            lessons=learning.render(lessons),
+        ).text
     if handled.reply and (directed or handled.commitment is not None or handled.outcome == "crossteam"):
         say(
             session,
@@ -258,6 +291,7 @@ def handle_message(
             kind="slack.reply_thread",
             thread_ts=thread_ts,
             commitment=handled.commitment,
+            context=text,
         )
     return handled
 
@@ -274,6 +308,7 @@ def process_inbox(event_id: str, session: orm.Session) -> str:
         feed.INBOX_EVENTS.labels(source=ev.source, result="no_team").inc()
         return ev.outcome
     model = llm.for_org(session, ev.org_id)
+    parent = p.get("thread_ts")
     res = handle_message(
         session,
         team,
@@ -285,10 +320,12 @@ def process_inbox(event_id: str, session: orm.Session) -> str:
         thread_ts=p.get("thread_ts") or p.get("ts"),
         model=model,
         directed=bool(p.get("directed")),
+        channel=p.get("channel"),
+        in_thread=bool(parent) and parent != p.get("ts"),
     )
     ev.processed_at, ev.outcome = models.utcnow(), res.outcome
     feed.INBOX_EVENTS.labels(source=ev.source, result=res.outcome).inc()
-    if res.outcome != "chatter":
+    if res.outcome not in ("chatter", "gap_answer"):
         feed.activity(
             session,
             ev.org_id,
@@ -510,6 +547,25 @@ class Desk:
         )
         return f"{verb}."
 
+    def note_open_question(self, question: str) -> str:
+        """Log a question the notes don't answer as an open question for the team, so someone fills it in.
+
+        Use it whenever search_knowledge doesn't answer what the person asked.
+        """
+        if not question.strip():
+            return "Say the question first."
+        gap = learning.log_gap(
+            self.s, self.team, question, asked_by=self.user.name if self.user else "a visitor"
+        )
+        self.turn.actions.append(
+            {
+                "kind": "question",
+                "text": "Added to open questions" + (f" (asked {gap.count}×)" if gap.count > 1 else ""),
+                "link": f"/teams/{self.team.slug}/learning",
+            }
+        )
+        return f"Logged as an open question for {self.team.name}."
+
     def tools(self) -> list[lc_tools.BaseTool]:
         """The desk methods as LangChain tools."""
         return [
@@ -523,6 +579,7 @@ class Desk:
                 "ask_team",
                 "service_status",
                 "draft_post",
+                "note_open_question",
             )
         ]
 
@@ -534,7 +591,7 @@ draft posts. You are at level L{level} ({level_name}): {can}
 Rules:
 - Use tools for facts. Never invent commitments, dates, owners, or service states.
 - Log work only when the person clearly asks for it or commits to it.
-- Cite notes as [Title] when you use them. If notes don't cover it, say so plainly.
+- Cite notes as [Title] when you use them. If notes don't cover it, say so plainly and call note_open_question.
 - Other teams: {teams}.
 - Today is {today} in {tz}. The person talking to you: {person}.
 - Replies are short (one to four sentences or a short list), calm and plain. No emoji."""
@@ -580,7 +637,28 @@ def _rule_chat(desk: Desk, text: str) -> None:
             desk.turn.text = desk.log_commitment(tri.title, due=tri.due, priority=tri.priority)
         return
     found = desk._search(t)
-    desk.turn.text = brain.answer(None, t, found, steward=desk.steward.name, team=desk.team.name)
+    if tri.kind != "question":
+        # Not a question ("hi", "thanks"): answer from notes if they match, but don't log an open question.
+        desk.turn.text = brain.answer(None, t, found, steward=desk.steward.name, team=desk.team.name)
+        return
+    reply = learning.answer(
+        desk.s,
+        desk.team,
+        None,
+        t,
+        found,
+        steward=desk.steward.name,
+        asked_by=desk.user.name if desk.user else "a visitor",
+    )
+    desk.turn.text = reply.text
+    if reply.gap is not None:
+        desk.turn.actions.append(
+            {
+                "kind": "question",
+                "text": "Added to open questions",
+                "link": f"/teams/{desk.team.slug}/learning",
+            }
+        )
 
 
 def chat(
@@ -634,7 +712,7 @@ def chat(
         "chat",
         desk.steward.emoji,
         f"{desk.steward.name} answered {user.name if user else 'someone'} at the front desk",
-        f"/teams/{team.slug}?tab=chat",
+        f"/teams/{team.slug}/front-desk",
     )
     session.flush()
     return [reply]
@@ -664,6 +742,9 @@ def _agent_chat(
     )
     if st.persona:
         prompt += f"\n\nPersona: {st.persona}"
+    lessons = learning.render(learning.relevant(session, desk.team.id, text, desk.clearance))
+    if lessons:
+        prompt += "\n\n" + lessons
     history = list(
         session.scalars(
             sa.select(models.ChatMessage)

@@ -12,7 +12,19 @@ import random
 import sqlalchemy as sa
 from sqlalchemy import orm
 
-from keel import auth_utils, feed, gateway, inbox, knowledge, ledger, models, rhythm, services, steward
+from keel import (
+    auth_utils,
+    feed,
+    gateway,
+    inbox,
+    knowledge,
+    learning,
+    ledger,
+    models,
+    rhythm,
+    services,
+    steward,
+)
 
 DEMO_ORG = "Acme"
 DEMO_ADMIN_EMAIL = "avery@acme.example"
@@ -474,18 +486,136 @@ def seed(session: orm.Session, now: dt.datetime | None = None) -> models.Org:
         ]
     )
     session.flush()
+    _seed_learning(session, teams, now)
     for team in teams.values():
         rhythm.make_brief(session, team, "daily", post=False, now=now)
     feed.audit(session, org.id, "keel", "demo.seeded", DEMO_ORG)
     return org
 
 
+# slug, kind, author, days ago, uses, fields
+LESSONS: list[tuple[str, str, str, float, int, dict[str, str]]] = [
+    (
+        "payments",
+        "rule",
+        "Maya Patel",
+        12,
+        64,
+        {"note": "Tag @payments-oncall on anything about webhooks or payouts."},
+    ),
+    (
+        "payments",
+        "rule",
+        "Jonas Berg",
+        5,
+        23,
+        {"note": "Keep channel replies to two sentences. Link the runbook instead of pasting it."},
+    ),
+    (
+        "payments",
+        "reply",
+        "Maya Patel",
+        3,
+        6,
+        {
+            "situation": "@Pip when does the PCI scan window open?",
+            "before": "The PCI scan window opens next Monday at 9am PT. Let me know if you need anything else!",
+            "after": "PCI scan window: Mon 9:00 PT. Steps in [Runbook: PCI scan].",
+        },
+    ),
+    (
+        "payments",
+        "triage",
+        "Lena Ortiz",
+        2,
+        2,
+        {
+            "situation": "lol I'll fix the coffee machine by Friday",
+            "before": "Logged as work: Fix the coffee machine",
+            "after": learning.NOT_WORK,
+            "note": "a joke",
+        },
+    ),
+    (
+        "payments",
+        "triage",
+        "Jonas Berg",
+        1,
+        1,
+        {
+            "situation": "we'll have the payout retry fix out by EOW",
+            "before": "Logged: Ship payout retry fix",
+            "after": "due Fri (I had Sun)",
+        },
+    ),
+    (
+        "payments",
+        "reply",
+        "Lena Ortiz",
+        0.5,
+        0,
+        {
+            "situation": "@Pip can you post this week's refund numbers for finance?",
+            "before": "Refunds this week: 412 for $38,910, up 6% on last week.",
+            "note": "Finance numbers go to Lena first, never straight to the channel.",
+        },
+    ),
+    (
+        "platform",
+        "rule",
+        "Sam Okafor",
+        9,
+        31,
+        {"note": "Always include the Grafana link when talking about latency."},
+    ),
+]
+# slug, question, asked by, times asked, days ago, suggested answer, suggested by
+GAPS: list[tuple[str, str, str, int, float, str | None, str | None]] = [
+    ("payments", "How do we rotate the Adyen API key?", "Jonas Berg", 3, 0.4, None, None),
+    (
+        "payments",
+        "Who approves refunds over $10k?",
+        "Ravi Kumar",
+        2,
+        1.2,
+        "Refunds over $10k need sign-off from Maya or Lena. Post the ticket in #payments-approvals and tag "
+        "both of us; one approval is enough.",
+        "Lena Ortiz",
+    ),
+    ("platform", "What's the max replica count for the API pods?", "Kai Tanaka", 1, 2.5, None, None),
+]
+
+
+def _seed_learning(session: orm.Session, teams: dict[str, models.Team], now: dt.datetime) -> None:
+    """Lessons and open questions, so the Learning tab tells a story on first open."""
+    for slug, kind, author, ago, uses, fields in LESSONS:
+        source = {"rule": "teach", "triage": "commitment:demo"}.get(kind, "approval:demo")
+        r = learning.add_lesson(session, teams[slug], kind=kind, author=author, source=source, **fields)
+        r.created_at = r.updated_at = now - _days(ago)
+        r.uses = uses
+        r.last_used_at = now - _days(min(ago, 0.1)) if uses else None
+    for slug, question, by, count, ago, answer, answered_by in GAPS:
+        g = learning.log_gap(session, teams[slug], question, asked_by=by)
+        g.count, g.created_at, g.last_asked_at = count, now - _days(ago + 3), now - _days(ago)
+        if answer:
+            g.suggested_answer, g.suggested_by, g.status = answer, answered_by, "suggested"
+
+
 # ---------------------------------------------------------------- the scripted story
 
 
 def _inbox(
-    session: orm.Session, org: models.Org, team: models.Team, text: str, user: str, directed: bool = True
+    session: orm.Session,
+    org: models.Org,
+    team: models.Team,
+    text: str,
+    user: str,
+    directed: bool = True,
+    *,
+    ts: str | None = None,
+    thread_ts: str | None = None,
 ) -> None:
+    ts = ts or f"{models.utcnow().timestamp():.6f}"
     inbox.record(
         session,
         org.id,
@@ -496,7 +626,9 @@ def _inbox(
         {
             "text": text,
             "user_name": user,
-            "ts": f"{models.utcnow().timestamp():.6f}",
+            "channel": f"sim-{team.slug}",
+            "ts": ts,
+            "thread_ts": thread_ts or ts,
             "directed": directed,
             "permalink": f"https://acme.slack.example/archives/{team.slug}",
         },
@@ -600,6 +732,33 @@ def _step_leak(s: orm.Session, org: models.Org) -> None:
     )
 
 
+OPEN_QUESTION_TS = "1764300000.000100"  # Fixed, so the next step can reply in the same thread.
+
+
+def _step_open_question(s: orm.Session, org: models.Org) -> None:
+    _inbox(
+        s,
+        org,
+        _team(s, org, "payments"),
+        "@Pip what's our SLA for Klarna disputes?",
+        "Theo Walsh",
+        ts=OPEN_QUESTION_TS,
+    )
+
+
+def _step_thread_answer(s: orm.Session, org: models.Org) -> None:
+    _inbox(
+        s,
+        org,
+        _team(s, org, "payments"),
+        "Klarna disputes get a first reply within 2 business days. Lena owns the queue in Zendesk.",
+        "Lena Ortiz",
+        directed=False,
+        ts=f"{float(OPEN_QUESTION_TS) + 60:.6f}",
+        thread_ts=OPEN_QUESTION_TS,
+    )
+
+
 def _step_brief(s: orm.Session, org: models.Org) -> None:
     for slug in ("payments", "platform", "mobile"):
         rhythm.make_brief(s, _team(s, org, slug), "daily", post=False)
@@ -614,6 +773,8 @@ STEPS = [
     ("checkout-api recovers: the incident closes itself", _step_recover),
     ("Jonas says C-88 is done in Slack", _step_done),
     ("A leak attempt: restricted text blocked by a canary", _step_leak),
+    ("Pip can't answer from the notes, so it logs an open question", _step_open_question),
+    ("Lena answers in the thread: Pip suggests saving it to knowledge", _step_thread_answer),
     ("Fresh daily briefs", _step_brief),
 ]
 

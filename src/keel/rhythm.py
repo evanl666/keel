@@ -11,13 +11,14 @@ import zoneinfo
 import sqlalchemy as sa
 from sqlalchemy import orm
 
-from keel import brain, feed, gateway, ledger, llm, models, steward
+from keel import brain, feed, gateway, labels, learning, ledger, llm, models, steward
 
 NUDGE_COOLDOWN = dt.timedelta(hours=24)  # One reminder a day per commitment; more feels like nagging.
 WEEKLY_BRIEF_WEEKDAY = 0  # Monday: the week's plan is set then.
 BRIEF_LIST_LIMIT = 6  # Lines per brief section; the rest is one click away on the ledger.
 RECENT_DONE_WINDOW = dt.timedelta(days=1)
 WEEK = dt.timedelta(days=7)
+TEAM_CLEARANCE = labels.audience_max_for_target("team")
 
 
 def _period(kind: str, now_local: dt.datetime) -> str:
@@ -63,7 +64,13 @@ def facts(session: orm.Session, team: models.Team, kind: str, now: dt.datetime |
     teams = {
         t.id: t for t in session.scalars(sa.select(models.Team).where(models.Team.org_id == team.org_id))
     }
+    learned = learning.brief_facts(session, team, now) if kind == "weekly" else {}
     return {
+        # Briefs post to the team channel, so lessons above team clearance stay out.
+        "learned": [
+            h for h, label in learned.get("learned", []) if labels.audience_allows(TEAM_CLEARANCE, label)
+        ],
+        "open_questions": learned.get("open_questions", []),
         "open": len(open_rows),
         "overdue": sum(ledger.risk(c, now) == "overdue" for c in open_rows),
         "at_risk": sum(ledger.risk(c, now) == "at_risk" for c in open_rows),
@@ -139,6 +146,21 @@ def render(
         ]
     if f["done_items"]:
         md += ["", "### Done", *_lines(f["done_items"], lambda r: f"- ✅ **{r[0]}** {r[1]}")]
+    if f.get("open_questions"):
+        md += [
+            "",
+            "### Open questions",
+            *_lines(
+                f["open_questions"],
+                lambda r: (
+                    f"- ❓ {r[0]}"
+                    + (f" · asked {r[1]}×" if r[1] > 1 else "")
+                    + (" · answer waiting to be saved" if r[2] else "")
+                ),
+            ),
+        ]
+    if f.get("learned"):
+        md += ["", f"### {st.name} learned this week", *_lines(f["learned"], lambda h: f"- 🧠 {h}")]
     if f["needs_you"]:
         md += [
             "",
@@ -170,7 +192,8 @@ def make_brief(
     model_facts = {
         k: v
         for k, v in f.items()
-        if isinstance(v, (int, list)) and k not in ("risky", "incoming", "outgoing", "done_items")
+        if isinstance(v, (int, list))
+        and k not in ("risky", "incoming", "outgoing", "done_items", "learned", "open_questions")
     }
     model_facts["risky"] = [f"{r[0]} {r[1]} ({r[2]})" for r in f["risky"]]
     head = brain.headline(llm.for_org(session, team.org_id), model_facts, steward=st.name, team=team.name)
@@ -185,7 +208,7 @@ def make_brief(
             "brief",
             "🔁",
             f"{st.name} refreshed the {kind} brief for {team.name}",
-            f"/teams/{team.slug}?tab=briefs",
+            f"/teams/{team.slug}",
         )
     else:
         brief = models.Brief(
@@ -206,7 +229,7 @@ def make_brief(
             "brief",
             "☀️" if kind == "daily" else "🗓️",
             f"{st.name} wrote the {kind} brief for {team.name}",
-            f"/teams/{team.slug}?tab=briefs",
+            f"/teams/{team.slug}",
         )
         if post:
             steward.say(

@@ -13,6 +13,7 @@ export const qk = {
   approvals: (team?: string) => ["approvals", team ?? null] as const,
   operations: (team?: string) => ["operations", team ?? null] as const,
   knowledge: (slug: string) => ["knowledge", slug] as const,
+  learning: (slug: string) => ["learning", slug] as const,
   services: (slug: string) => ["services", slug] as const,
   briefs: (slug: string) => ["briefs", slug] as const,
   chat: (slug: string) => ["chat", slug] as const,
@@ -39,6 +40,8 @@ export const useApprovals = (team?: string) =>
 export const useOperations = (team?: string) =>
   useQuery({ queryKey: qk.operations(team), queryFn: () => api.operations({ team }), refetchInterval: 4_000 });
 export const useKnowledge = (slug: string) => useQuery({ queryKey: qk.knowledge(slug), queryFn: () => api.knowledge(slug) });
+export const useLearning = (slug: string) =>
+  useQuery({ queryKey: qk.learning(slug), queryFn: () => api.learning(slug), refetchInterval: 30_000 });
 export const useServices = (slug: string) =>
   useQuery({ queryKey: qk.services(slug), queryFn: () => api.services(slug), refetchInterval: 30_000 });
 export const useAllServices = (slugs: string[]) =>

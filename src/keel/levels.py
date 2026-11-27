@@ -8,12 +8,12 @@ import datetime as dt
 import sqlalchemy as sa
 from sqlalchemy import orm
 
-from keel import models
+from keel import feed, models
 
 PROMOTION_MIN_SAMPLES = 50  # Enough human verdicts that a 95% approval rate is not luck (±~6% at 50).
 PROMOTION_MIN_APPROVAL_RATE = 0.95  # One rejection in twenty is the most we tolerate before trusting more.
 PROMOTION_WINDOW_DAYS = 30  # Old verdicts say little about today's prompts, tools and team.
-DEMOTION_ERROR_LIMIT = 3  # Three failed or rejected autonomous actions in a day → step down one level.
+DEMOTION_ERROR_LIMIT = 3  # Three rejected drafts or steward-caused failed writes in a day → down one level.
 DEMOTION_ERROR_WINDOW = dt.timedelta(hours=24)
 MAX_LEVEL = 4
 
@@ -130,12 +130,20 @@ def set_level(session: orm.Session, steward: models.Steward, to: int, reason: st
 
 
 def record_sample(session: orm.Session, steward: models.Steward, action_kind: str, outcome: str) -> None:
-    """Record a human verdict (or an autonomous error) and demote when errors pile up."""
+    """Record a human verdict, or a write that failed through the steward's fault ("error").
+
+    Rejections and errors pile up toward demotion. Approvals can earn the next level, which Keel announces
+    once; a person still makes the promotion.
+    """
     session.add(
         models.LevelSample(
             org_id=steward.org_id, team_id=steward.team_id, action_kind=action_kind, outcome=outcome
         )
     )
+    if outcome in ("approved", "edited"):
+        session.flush()
+        announce_if_eligible(session, steward)
+        return
     if outcome not in ("rejected", "error") or steward.level == 0:
         return
     session.flush()
@@ -162,3 +170,41 @@ def record_sample(session: orm.Session, steward: models.Steward, action_kind: st
             f"{recent_bad} rejected or failed actions in the last 24 hours.",
             "keel",
         )
+
+
+PROMOTION_ACTIVITY_KIND = "promotion"
+
+
+def announce_if_eligible(session: orm.Session, steward: models.Steward) -> bool:
+    """Post one feed line when the steward has earned its next level. True when it posted.
+
+    Posts at most once per level: nothing more until the level changes (promoted, demoted or reset).
+    """
+    status = promotion_status(session, steward)
+    if status.eligible_for is None or status.approval_rate is None:
+        return False
+    last_change = session.scalar(
+        sa.select(sa.func.max(models.LevelEvent.at)).where(models.LevelEvent.team_id == steward.team_id)
+    )
+    q = (
+        sa.select(sa.func.count())
+        .select_from(models.Activity)
+        .where(models.Activity.team_id == steward.team_id, models.Activity.kind == PROMOTION_ACTIVITY_KIND)
+    )
+    if last_change is not None:
+        q = q.where(models.Activity.at > last_change)
+    if session.scalar(q):
+        return False
+    nxt = level_def(status.eligible_for)
+    team = session.get(models.Team, steward.team_id)
+    feed.activity(
+        session,
+        steward.org_id,
+        steward.team_id,
+        PROMOTION_ACTIVITY_KIND,
+        "🎓",
+        f"{steward.name} earned L{nxt.level} {nxt.name}: {status.samples} drafts in "
+        f"{PROMOTION_WINDOW_DAYS} days, {status.approval_rate:.0%} sent unedited. Promote it when you're ready.",
+        f"/teams/{team.slug}/level" if team else None,
+    )
+    return True

@@ -370,7 +370,7 @@ features:
   slash_commands:
     - command: /keel
       description: Ask your team's steward
-      usage_hint: "status | ask <question> | log <commitment>"
+      usage_hint: "status | teach <rule> | ask <question> | log <commitment>"
       should_escape: false
 oauth_config:
   scopes:

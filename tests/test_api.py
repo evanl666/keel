@@ -82,7 +82,7 @@ def test_demo_story_plays_every_step(demo: testclient.TestClient) -> None:
         seen.append(r["title"])
         assert r["event"] is not None, f"step produced no activity: {r['title']}"
         drain_all()
-    assert len(seen) == 9
+    assert len(seen) == 11
     ops = ok(demo.get("/api/operations"))
     statuses = {o["status"] for o in ops}
     assert "reconciled" in statuses, "the lost-response write should be found, not resent"

@@ -80,6 +80,7 @@ badge** on the Checkup page. Commit the file and link it from the README the sam
 | **Services** | Health checks on the team's services. An outage opens an urgent commitment, recovery closes it. Allow-listed runbooks at L4. |
 | **Cross-team** | Platform's steward can ask Payments' steward for work. It lands in Payments' ledger, linked both ways. |
 | **Chores** | Repo checkups (stale PRs, waiting reviews, failing CI) and reminders. |
+| **Learning** | Edits, rejections, ledger fixes and thread answers become lessons and knowledge. See below. |
 
 ### Trust levels: earned, not configured
 
@@ -94,6 +95,27 @@ badge** on the Checkup page. Commit the file and link it from the README the sam
 Every approve, edit or reject is a sample. A steward earns the next level at 50 samples with ≥95% approved
 unedited in 30 days, and a person signs off. Three failed or rejected actions in a day step it down a level.
 A YAML file can lower a level but never raise one.
+
+### It learns from the team
+
+A steward that makes the same mistake twice isn't much of a colleague. Every correction is kept as a
+**lesson**, and the closest few are added the next time a similar message comes in:
+
+| You do this | It learns |
+| --- | --- |
+| Edit a draft before approving | **Reply lesson**: what it wrote, what you sent instead. Next time it writes it your way. |
+| Reject with a reason ("Not work", "Wrong team", "Too long"…) | **Lesson** with your reason. "Not work" means similar chatter stops becoming commitments. |
+| Drop or fix a commitment it logged (within 48 h) | **Triage lesson**: "lol I'll fix the coffee machine by Friday" isn't work; "by EOW" means Friday. |
+| `/keel teach Reply in the language the question was asked in.` | **Rule**, used in every reply and triage. |
+| Ask it something the notes don't cover | **Open question**. When a teammate answers in the Slack thread, Keel offers the answer: one click saves it to knowledge, and the next person gets it from the steward. |
+
+Every lesson shows who taught it, how often it's been used, and a switch to turn it off. The weekly brief
+says what the steward learned and which questions are still open; the Learning tab tracks how many drafts
+now go out unedited. Lessons respect labels like knowledge does. Rules shape replies when a model is
+connected; without one, triage lessons still apply. Nothing is fine-tuned and nothing leaves your
+database.
+
+![Learning tab: lessons, open questions, and drafts sent without edits](docs/screenshots/learning.png)
 
 | Front desk: answers with sources | Approvals: exactly what will be sent |
 | --- | --- |
@@ -239,7 +261,7 @@ keel worker                 # run the worker separately (Helm does this for you)
 
 ## What's in v0.1, and what isn't yet
 
-Built: the six duties, levels with promotion and demotion, the gateway with reconciliation, Slack (Socket
+Built: the six duties, learning from corrections and open questions, levels with promotion and demotion, the gateway with reconciliation, Slack (Socket
 Mode), GitHub (token or App, webhooks), OIDC SSO with an admin group, the setup wizard, the web UI with a live
 stream, `keel apply`, the runner, Compose and Helm, Prometheus metrics, audit log, backup and restore.
 
@@ -273,7 +295,7 @@ License: Apache-2.0.
 **给每个团队一个 AI 管家。** Keel 为每个团队配一个管家：把团队的承诺记在账上、在“前台”回答问题、
 每天发简报、盯着团队的服务、在团队之间传递请求。它能做什么，由团队给它的信任等级决定。
 
-### 管家的六项职责
+### 管家的职责
 
 - **承诺账本**：Slack 里一句“周五前谁能把 webhook 密钥轮换一下？”会变成 **C-88**，有负责人、截止日期和风险灯；之后一句“C-88 做完了”就会关闭它。
 - **前台问答**：任何人都可以问管家，答案来自团队文档并附来源；受限内容不会被引用，回复会说明有几条被略去。
@@ -281,6 +303,21 @@ License: Apache-2.0.
 - **服务**：对团队服务做健康检查；故障自动开紧急承诺，恢复后自动关闭；L4 可执行白名单内的 runbook。
 - **跨团队**：Platform 的管家可以向 Payments 的管家提需求，落到对方账本，双向关联。
 - **杂务**：仓库体检（陈旧 PR、等待评审、CI 失败）和提醒。
+- **学习**：草稿修改、带理由的拒绝、账本纠正、线程里的回答，都会变成经验和知识（见下文）。
+
+### 会向团队学习
+
+每次纠正都会存成一条**经验（lesson）**，下次遇到相似的消息时，最相近的几条会一起交给管家：
+
+- **改了草稿再批准**：记下“它原来写的 → 你实际发的”，下次按你的写法。
+- **拒绝并写理由**（不是工作、找错团队、太长、语气不对……）：理由存成经验；“不是工作”会让类似闲聊不再被记成承诺。
+- **48 小时内删掉或改正它记的承诺**：存成分拣经验，比如“周五前我把咖啡机修好 lol”不是工作，“EOW”指周五。
+- **`/keel teach 用提问的语言回复。`**：存成规则，每次回复和分拣都会用到。
+- **问了文档里没有的问题**：记为**待解答问题**；同事在 Slack 线程里回答后，Keel 会建议把答案存进知识库，一键保存，下一个人再问就能直接答。
+
+每条经验都写明谁教的、用过几次，并可单独关闭。周报会列出本周学到了什么、还有哪些问题没人回答；Learning
+页显示草稿原样发出的比例变化。经验和知识一样受标签控制。规则在接入模型后才影响回复；不接模型时分拣经验仍然生效。
+不做微调，数据不出你的数据库。
 
 ### 信任等级：靠表现挣来，不靠配置
 
