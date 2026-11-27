@@ -94,6 +94,9 @@ function Running({ r }: { r: CheckupReport }) {
   );
 }
 
+// Next to the promise badge from examples/workflows/promise-check.yml.
+const CHECKUP_BADGE_PATH = ".github/badges/checkup.svg";
+
 function ShareRow({ r }: { r: CheckupReport }) {
   const toast = useToast();
   const badge = useCheckupSvg(r.id, "badge");
@@ -103,7 +106,7 @@ function ShareRow({ r }: { r: CheckupReport }) {
     setBusy(kind);
     try {
       const svg = kind === "badge" ? (badge.data ?? (await api.checkupBadge(r.id))) : await api.checkupCard(r.id);
-      downloadText(`${base}-${kind}.svg`, svg);
+      downloadText(kind === "badge" ? "checkup.svg" : `${base}-card.svg`, svg);
     } catch (e) {
       toast({ title: "The download didn't start", line: errorLine(e), tone: "bad" });
     } finally {
@@ -111,11 +114,11 @@ function ShareRow({ r }: { r: CheckupReport }) {
     }
   };
   const copyBadge = async () => {
-    const page = `${location.origin}/checkup?id=${encodeURIComponent(r.id)}`;
-    const md = `[![keel checkup](${location.origin}/api/checkups/${encodeURIComponent(r.id)}/badge.svg)](${page})`;
+    // A path inside the repo, not a link to this Keel: the API needs a sign-in and a README is public.
+    const md = `![keel checkup](${CHECKUP_BADGE_PATH})`;
     try {
       await copyText(md);
-      toast({ title: "Badge Markdown copied", line: "The badge loads for people signed in to this Keel.", icon: "📋" });
+      toast({ title: "Badge Markdown copied", line: `Save the downloaded badge as ${CHECKUP_BADGE_PATH} in the repo.`, icon: "📋" });
     } catch (e) {
       toast({ title: "Nothing was copied", line: errorLine(e), tone: "bad" });
     }

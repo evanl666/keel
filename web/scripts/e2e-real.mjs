@@ -46,16 +46,14 @@ const expectDownload = async (label, click, pattern) => {
 const badgeBtn = page.getByRole("button", { name: "Download badge" });
 await badgeBtn.waitFor({ timeout: 90000 }).catch(() => problems.push("checkup never offered Download badge"));
 if (await badgeBtn.count()) {
-  await expectDownload("checkup badge", () => badgeBtn.click(), /^acme-api-checkup-badge\.svg$/);
+  await expectDownload("checkup badge", () => badgeBtn.click(), /^checkup\.svg$/);
   await expectDownload("checkup card", () => page.getByRole("button", { name: "Download share card" }).click(), /^acme-api-checkup-card\.svg$/);
   await page.getByRole("button", { name: "Copy badge Markdown" }).click();
   await page.waitForTimeout(300);
   const md = await page.evaluate(() => navigator.clipboard.readText());
-  if (!/^\[!\[keel checkup\]\(http:\/\/localhost:8431\/api\/checkups\/[\w-]+\/badge\.svg\)\]/.test(md)) problems.push(`checkup badge markdown: ${md.slice(0, 120)}`);
+  // A README is public, so the Markdown must point at the committed file, never at this (signed-in) Keel.
+  if (md !== "![keel checkup](.github/badges/checkup.svg)") problems.push(`checkup badge markdown: ${md.slice(0, 120)}`);
   else console.log(`checkup badge markdown: ${md}`);
-  const badgeUrl = md.match(/\((http[^)]+badge\.svg)\)/)?.[1];
-  const res = badgeUrl && (await page.request.get(badgeUrl));
-  if (!res || res.status() !== 200 || !(await res.text()).startsWith("<svg")) problems.push(`checkup badge url ${badgeUrl} -> ${res?.status()}`);
   await page.screenshot({ path: `${out}/checkup-share.png`, fullPage: true });
 }
 // promises: run the demo repo, filter, and use every share action
@@ -73,12 +71,24 @@ console.log(`promises rows: all ${all}, overdue ${overdue}`);
 if (all !== 10 || overdue !== 3) problems.push(`promises rows all=${all} overdue=${overdue}, expected 10/3`);
 await page.getByRole("button", { name: /^All/ }).first().click();
 await expectDownload("promises card", () => page.getByRole("button", { name: "Download share card" }).click(), /^acme-payments-promises-card\.svg$/);
-await expectDownload("promises badge", () => page.getByRole("button", { name: "Download badge.svg" }).click(), /^acme-payments-promises-badge\.svg$/);
+await expectDownload("promises badge", () => page.getByRole("button", { name: "Download badge.svg" }).click(), /^promises\.svg$/);
+await page.getByRole("button", { name: "Copy badge Markdown" }).click();
+await page.waitForTimeout(300);
+const promiseBadgeMd = await page.evaluate(() => navigator.clipboard.readText());
+if (promiseBadgeMd !== "![promises kept](.github/badges/promises.svg)") problems.push(`promises badge markdown: ${promiseBadgeMd}`);
+else console.log(`promises badge markdown: ${promiseBadgeMd}`);
 await page.getByRole("button", { name: "Copy Markdown summary" }).click();
 await page.waitForTimeout(300);
 const summary = await page.evaluate(() => navigator.clipboard.readText());
 if (!summary.startsWith("### ⚓ Promise check: acme/payments")) problems.push(`promises summary: ${summary.slice(0, 80)}`);
 await page.screenshot({ path: `${out}/promises-result.png`, fullPage: true });
+// The demo report follows the chosen window, like a real scan.
+await page.goto(base + "/promises?repo=acme/payments&days=7", { waitUntil: "networkidle" });
+await page.getByText("of promises kept").first().waitFor({ timeout: 60000 }).catch(() => {});
+const week = await rows();
+console.log(`promises rows, last 7 days: ${week}`);
+if (!(week > 0 && week < all)) problems.push(`7-day promises rows ${week}, expected fewer than ${all}`);
+if (!(await page.getByText(/last 7 days/i).count())) problems.push("7-day report doesn't say 'last 7 days'");
 const bad = await page.request.post(base + "/api/promises", { data: { repo: "not a repo", days: 30 } });
 if (bad.status() !== 422) problems.push(`promises bad repo -> ${bad.status()}, expected 422`);
 // Team Wrapped: open from the team header, step through every slide, download the card

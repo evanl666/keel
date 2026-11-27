@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import html
 import typing
 import xml.etree.ElementTree as ET
 
@@ -214,6 +215,44 @@ def test_demo_report_tells_a_story() -> None:
     st = r.stats
     assert st["kept"] >= 3 and st["overdue"] >= 1 and st["quiet"] >= 1 and st["follow_up"] == 1
     assert st["kept_rate"] is not None and 0 < st["kept_rate"] < 1
+
+
+def test_demo_report_follows_the_chosen_window() -> None:
+    ages = sorted(row[2] for row in promises.DEMO_PROMISES)
+    month = promises.demo_report("acme/payments", now=NOW)
+    assert month.days == 30 and len(month.promises) == len(ages)
+    week = promises.demo_report("acme/payments", days=7, now=NOW)
+    assert week.days == 7 and "last 7 days" in promises.card(week).lower()
+    assert len(week.promises) == sum(a <= 7 for a in ages) < len(month.promises)
+    assert all(p.age_days <= 7 for p in week.promises)
+    assert week.scanned_comments < month.scanned_comments
+    one = promises.demo_report("acme/payments", days=ages[0], now=NOW)
+    assert len(one.promises) == 1 and one.scanned_comments >= 1
+    none = promises.demo_report("acme/payments", days=1, now=NOW)
+    assert none.promises == [] and none.stats["kept_rate"] is None
+    with pytest.raises(ValueError, match="at least one day"):
+        promises.demo_report("acme/payments", days=0)
+
+
+@pytest.mark.parametrize(
+    ("meta", "private"),
+    [
+        ({"default_branch": "main"}, False),
+        ({"private": False, "visibility": "public"}, False),
+        ({"private": True, "visibility": "private"}, True),
+        ({"private": False, "visibility": "internal"}, True),
+    ],
+)
+def test_private_repos_keep_comment_text_off_the_card(
+    gh: respx.MockRouter, meta: dict, private: bool
+) -> None:
+    gh.get("/repos/acme/app").respond(json=meta)
+    report = promises.scan("acme/app", client=httpx.Client(base_url=API), now=NOW)
+    assert report.private is private and report.as_dict()["private"] is private
+    oldest = report.stats["oldest_unkept"]["quote"]
+    card = promises.card(report)
+    assert (html.escape(oldest[:20]) in card) is not private
+    assert ("Private repo" in card) is private
 
 
 @pytest.mark.parametrize(

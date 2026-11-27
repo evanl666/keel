@@ -15,6 +15,7 @@ from keel import db, ledger, models, steward, svg, wrapped
 
 from .test_api import demo as demo
 from .test_api import drain_all, ok
+from .test_api import fresh as fresh
 
 
 def _team(s: typing.Any, slug: str) -> models.Team:
@@ -96,6 +97,9 @@ def test_api_wrapped_promises_and_checkup_badges(demo: testclient.TestClient) ->
     p = ok(demo.post("/api/promises", json={"repo": "acme/payments"}))
     assert p["stats"]["promises"] == len(p["promises"]) > 0 and p["card_svg"].startswith("<svg")
     assert "Promise check" in p["markdown"]
+    week = ok(demo.post("/api/promises", json={"repo": "acme/payments", "days": 7}))
+    assert week["days"] == 7 and 0 < len(week["promises"]) < len(p["promises"])
+    assert "last 7 days" in week["markdown"] and week["private"] is False
     bad = demo.post("/api/promises", json={"repo": "nope"})
     assert bad.status_code == 422 and "owner/name" in bad.json()["detail"]
 
@@ -106,3 +110,14 @@ def test_api_wrapped_promises_and_checkup_badges(demo: testclient.TestClient) ->
     assert badge.status_code == 200 and "keel checkup" in badge.text
     assert ET.fromstring(demo.get(f"/api/checkups/{started['id']}/card.svg").text) is not None
     assert demo.get("/api/checkups/nope/card.svg").status_code == 404
+
+
+def test_share_routes_need_a_signed_in_user(fresh: testclient.TestClient) -> None:
+    # Outside demo mode nothing about a repo or a team is served to someone who isn't signed in.
+    for path in (
+        "/api/checkups/any/badge.svg",
+        "/api/checkups/any/card.svg",
+        "/api/teams/payments/wrapped/card.svg",
+    ):
+        assert fresh.get(path).status_code == 401
+    assert fresh.post("/api/promises", json={"repo": "acme/payments"}).status_code == 401

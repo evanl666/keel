@@ -30,9 +30,11 @@ const DEMO: Row[] = [
 const rateText = (r: number | null) => (r === null ? "n/a" : `${Math.round(r * 100)}%`);
 const num = (x: number) => String(Number(x.toFixed(2)));
 
+const COMMENTS_PER_DAY = 10.6; // Matches keel/promises.py DEMO_COMMENTS_PER_DAY: 318 comments in 30 days.
+
 export function promiseReport(repo: string, days: number): PromiseReport {
   const now = Date.now();
-  const promises: FoundPromise[] = DEMO.map(([who, quote, ago, number, isPr, what, due, deferred, status, keep]) => {
+  const promises: FoundPromise[] = DEMO.filter(([, , ago]) => ago <= days).map(([who, quote, ago, number, isPr, what, due, deferred, status, keep]) => {
     const said = now - ago * DAY;
     return {
       who,
@@ -82,12 +84,13 @@ export function promiseReport(repo: string, days: number): PromiseReport {
   const report = {
     repo,
     days,
-    scanned_comments: 318,
-    checked_threads: 10,
+    scanned_comments: Math.max(promises.length, Math.round(COMMENTS_PER_DAY * days)),
+    checked_threads: promises.length,
     promises,
     used_model: false,
     stats,
     not_checked: ["mock data: a sample report, not a real scan"],
+    private: false,
   };
   const st = stats;
   const rows: [string, string][] = [

@@ -13,3 +13,4 @@ web/dist/
 web/test-results/
 web/playwright-report/
 src/keel/web_dist/
+.keel-scratch/

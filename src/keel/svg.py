@@ -107,11 +107,14 @@ def _fit(text: str, limit: int = MAX_CARD_LINE) -> str:
 def card(c: Card) -> str:
     """Render a 1200×630 share card."""
     shown = c.rows[:MAX_ROWS]
-    # Rows share the band between the title (y≈216) and the quote box (y=500); four need a tighter step.
-    step = 74 if len(shown) <= 3 else 60
+    # Rows share the band between the title (y≈216) and the quote box (y=500). Four rows get a
+    # smaller label and value so each pair keeps a clear gap from the next.
+    roomy = len(shown) <= 3
+    step, label_px, value_px, gap = (74, 22, 30, 32) if roomy else (66, 18, 26, 27)
     rows = "".join(
-        f'<text x="640" y="{244 + i * step}" font-size="22" fill="#A99FD6">{_fit(k, 40)}</text>'
-        f'<text x="640" y="{276 + i * step}" font-size="30" font-weight="600" fill="#F4F1FF">{_fit(v, 34)}</text>'
+        f'<text x="640" y="{240 + i * step}" font-size="{label_px}" fill="#A99FD6">{_fit(k, 40)}</text>'
+        f'<text x="640" y="{240 + gap + i * step}" font-size="{value_px}" font-weight="600" '
+        f'fill="#F4F1FF">{_fit(v, 34)}</text>'
         for i, (k, v) in enumerate(shown)
     )
     quote = (

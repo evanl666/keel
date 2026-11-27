@@ -394,6 +394,8 @@ export interface PromiseReport {
   used_model: boolean;
   stats: PromiseStats;
   not_checked: string[];
+  /** True for private or internal repos: share cards then leave comment text out. */
+  private: boolean;
   badge_svg: string;
   card_svg: string;
   markdown: string;

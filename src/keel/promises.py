@@ -32,6 +32,7 @@ from keel import brain, checkup, models, svg
 log = logging.getLogger(__name__)
 
 LOOKBACK_DAYS = 30  # A month shows a pattern without dragging in promises nobody remembers.
+DEMO_COMMENTS_PER_DAY = 10.6  # The sample repo's comment rate: 318 comments in the default 30 days.
 MAX_COMMENT_PAGES = 3  # 300 issue comments; bounds calls for tokenless use (60 requests/hour).
 MAX_COMMENT_PAGES_WITH_TOKEN = 10  # 1,000 comments; a token allows 5,000 requests/hour.
 MIN_JUDGED = 3  # Below this a kept rate is noise ("100%" from one promise), so we show n/a.
@@ -113,6 +114,7 @@ class Report:
     used_model: bool
     stats: dict[str, typing.Any]
     not_checked: list[str]
+    private: bool = False
 
     def as_dict(self) -> dict[str, typing.Any]:
         """JSON-ready form."""
@@ -331,7 +333,8 @@ def scan(
     now = now or models.utcnow()
     http = client or checkup.github_client(token, api_url)
     pages = MAX_COMMENT_PAGES_WITH_TOKEN if token else MAX_COMMENT_PAGES
-    if checkup.fetch(http, f"/repos/{repo}") is None:
+    meta = checkup.fetch(http, f"/repos/{repo}")
+    if meta is None:
         raise checkup.CheckupError(f"Can't find {repo}. Check the name, or add a token for private repos.")
     since = (now - dt.timedelta(days=days)).isoformat().replace("+00:00", "Z")
     comments: list[dict[str, typing.Any]] = []
@@ -400,6 +403,8 @@ def scan(
         used_model=model is not None,
         stats=summarize(promises),
         not_checked=not_checked,
+        # Anything GitHub doesn't call public (private, internal) keeps its comment text off share cards.
+        private=bool(meta.get("private")) or meta.get("visibility", "public") != "public",
     )
 
 
@@ -425,7 +430,9 @@ def card(report: Report) -> str:
     if st["median_days_to_keep"] is not None:
         rows.append(("Median time to keep", f"{st['median_days_to_keep']:g} days"))
     quote = ""
-    if old := st["oldest_unkept"]:
+    if report.private:
+        quote = "Private repo: comment text stays out of this card."
+    elif old := st["oldest_unkept"]:
         # No @handle on a card meant for sharing: the point is the pattern, not calling someone out.
         quote = f"“{old['quote']}” ({round(old['age_days'])} days, no update)"
     return svg.card(
@@ -556,11 +563,19 @@ DEMO_PROMISES = [
 ]
 
 
-def demo_report(repo: str, now: dt.datetime | None = None) -> Report:
-    """A canned scan for the demo org, so the page works with no network or token."""
+def demo_report(repo: str, days: int = LOOKBACK_DAYS, now: dt.datetime | None = None) -> Report:
+    """A canned scan for the demo org, so the page works with no network or token.
+
+    Only sample promises made in the last ``days`` days are kept, like a real scan. Raises ValueError
+    when ``days`` is below 1.
+    """
+    if days < 1:
+        raise ValueError("Look back at least one day.")
     now = now or models.utcnow()
     out = []
     for who, quote, ago, number, is_pr, what, due_in, deferred, closed_after in DEMO_PROMISES:
+        if ago > days:
+            continue
         said = now - dt.timedelta(days=ago)
         thread = {"state": "open"}
         if closed_after is not None:
@@ -584,8 +599,8 @@ def demo_report(repo: str, now: dt.datetime | None = None) -> Report:
         out.append(outcome(p, thread, now))
     return Report(
         repo=repo,
-        days=LOOKBACK_DAYS,
-        scanned_comments=318,
+        days=days,
+        scanned_comments=max(len(out), round(DEMO_COMMENTS_PER_DAY * days)),
         checked_threads=len(out),
         promises=out,
         used_model=False,

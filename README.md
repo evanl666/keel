@@ -33,7 +33,13 @@ titles. You get a table, a README badge and a share card. Real run, 30 days of `
 
 ![Promise check card: 44% of 13 promises kept](docs/screenshots/promise-card.png)
 
-The card never names anyone; the table links each promise so maintainers can follow up kindly.
+The card never names anyone; the table links each promise so maintainers can follow up kindly. For a
+private repo the card leaves the comment text out too.
+
+To keep a badge in your README, copy [`examples/workflows/promise-check.yml`](examples/workflows/promise-check.yml)
+into `.github/workflows/`. Every Monday it rescans and commits `.github/badges/promises.svg`; add
+`![promises kept](.github/badges/promises.svg)` to the README once. The badge is a file in your repo, so
+nothing points back at a Keel server and nobody needs to sign in to see it.
 
 **Team Wrapped.** Spotify Wrapped for a team's promises: on-time rate, longest streak, fastest close, best
 partner team, and a persona (The Closers, The Good Neighbours, The Speedrunners…).
@@ -58,8 +64,9 @@ claude mcp add keel -- keel mcp --as you@acme.example          # Claude Code
 Tools: `list_teams`, `ask_team`, `list_commitments`, `log_commitment`, `update_commitment`, `team_wrapped`,
 `find_promises`. Without `--as` it's read-only. Answers respect labels: restricted notes never leave Keel.
 
-Badges for any checkup too: `keel checkup owner/repo --badge checkup.svg`, or
-`/api/checkups/{id}/badge.svg` from a running Keel.
+Badges for any checkup too: `keel checkup owner/repo --badge .github/badges/checkup.svg`, or **Download
+badge** on the Checkup page. Commit the file and link it from the README the same way. (The
+`/api/checkups/{id}/badge.svg` route needs a signed-in user, so it's for the app, not for a README.)
 
 ---
 
@@ -299,7 +306,9 @@ keel checkup vercel/next.js     # 给真实仓库做体检，只读
 
 - **承诺考古 `keel promises owner/repo`**：上个月有人在你的仓库里写了“周五前我提个 PR”，他做到了吗？Keel 读取近期评论，
   找出承诺（“我来修”“在做了”“PR 马上来”），再看后来发生了什么：兑现、逾期、没下文、放弃、挪到后续 PR。规则先找候选，
-  配了模型（`--provider`）就由模型剔除误报并写标题。输出表格、README 徽章和分享卡片；卡片上不点名任何人。
+  配了模型（`--provider`）就由模型剔除误报并写标题。输出表格、README 徽章和分享卡片；卡片上不点名任何人，私有仓库的卡片也不含评论原文。
+  README 徽章：把 `examples/workflows/promise-check.yml` 放进 `.github/workflows/`，每周一自动提交
+  `.github/badges/promises.svg`，README 里引用这个文件即可，不依赖 Keel 服务器、无需登录。
 - **团队年终总结 Team Wrapped `keel wrapped <team>`**：团队一个月的承诺回顾：按时率、最长连胜、最快关闭、最佳搭档团队，
   外加一个人设（The Closers、The Good Neighbours、The Speedrunners……）。
 - **编辑器里的管家 `keel mcp`**：MCP 服务器，Claude Code、Cursor 等可直接问团队管家、看逾期、记承诺。

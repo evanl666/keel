@@ -741,7 +741,7 @@ def scan_promises(body: PromiseScan, s: deps.Session, u: deps.User) -> dict:
     try:
         repo = ck.check_repo_name(body.repo)
         if org.settings.get("demo") and repo.startswith("acme/"):
-            report = promises.demo_report(repo)
+            report = promises.demo_report(repo, days=body.days)
         else:
             res = connections.resolve(s, u.org_id, "github")
             report = promises.scan(

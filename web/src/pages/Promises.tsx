@@ -283,6 +283,9 @@ function Report({ r }: { r: PromiseReport }) {
   );
 }
 
+// Same path as examples/workflows/promise-check.yml, so the Action keeps the badge you committed up to date.
+const BADGE_PATH = ".github/badges/promises.svg";
+
 function Share({ r }: { r: PromiseReport }) {
   const toast = useToast();
   const base = fileSlug(r.repo);
@@ -306,17 +309,22 @@ function Share({ r }: { r: PromiseReport }) {
             <Button variant="primary" icon={<Download className="size-3.5" />} onClick={() => downloadText(`${base}-promises-card.svg`, r.card_svg)}>
               Download share card
             </Button>
-            <Button icon={<Download className="size-3.5" />} onClick={() => downloadText(`${base}-promises-badge.svg`, r.badge_svg)}>
+            <Button icon={<Download className="size-3.5" />} onClick={() => downloadText("promises.svg", r.badge_svg)}>
               Download badge.svg
             </Button>
-            <Button icon={<Copy className="size-3.5" />} onClick={() => copy(`![promises kept](${base}-promises-badge.svg)`, "Badge Markdown")}>
+            <Button icon={<Copy className="size-3.5" />} onClick={() => copy(`![promises kept](${BADGE_PATH})`, "Badge Markdown")}>
               Copy badge Markdown
             </Button>
             <Button icon={<Copy className="size-3.5" />} onClick={() => copy(r.markdown, "Markdown summary")}>
               Copy Markdown summary
             </Button>
           </div>
-          <div className="mt-3 text-[12px] text-faint leading-snug">Commit the badge next to your README, then paste the badge Markdown. The summary fits an issue or a PR comment.</div>
+          <div className="mt-3 text-[12px] text-faint leading-snug">
+            Save the badge as <code className="font-mono">{BADGE_PATH}</code> in the repo, then paste the badge Markdown into the README. The promise-check Action can keep it fresh every week.
+          </div>
+          {r.private && (
+            <div className="mt-2 text-[12px] text-warn leading-snug">Private repo. The card leaves comment text out; the summary names people and issues, so post it only where the repo's readers are.</div>
+          )}
         </div>
       </div>
     </Card>
