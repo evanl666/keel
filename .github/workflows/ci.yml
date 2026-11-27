@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
       - run: helm lint deploy/helm/keel --set secretKey=ci-secret-ci-secret-ci-secret-0123 --set database.url=postgresql+psycopg://k:k@db/k
-      - run: helm template keel deploy/helm/keel --set secretKey=x --set postgres.enabled=true > /dev/null
+      - run: helm template keel deploy/helm/keel --set secretKey=x --set postgres.enabled=true --set postgres.password=ci > /dev/null
 
   action:
     name: GitHub Action (promise check)

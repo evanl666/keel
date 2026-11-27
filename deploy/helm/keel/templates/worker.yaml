@@ -16,6 +16,8 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
+      # Kubernetes adds KEEL_PORT=tcp://... for a Service named keel; that clashes with Keel's KEEL_ settings.
+      enableServiceLinks: false
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
       # Workers claim jobs with FOR UPDATE SKIP LOCKED, so any number can run side by side.
       # Schema upgrade before start. Postgres advisory lock: one replica migrates, the rest wait, then no-op.
