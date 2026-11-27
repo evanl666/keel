@@ -1,0 +1,62 @@
+name: Keel promise check
+description: Find the promises in your repo's comments ("I'll fix it by Friday") and see which were kept.
+author: evanl666
+branding:
+  icon: anchor
+  color: purple
+
+inputs:
+  repo:
+    description: owner/name to scan. Defaults to this repository.
+    default: ${{ github.repository }}
+  days:
+    description: How many days of comments to read (1-365).
+    default: "30"
+  token:
+    description: GitHub token for reading issues and comments.
+    default: ${{ github.token }}
+  badge:
+    description: Optional path to write a README badge SVG.
+    default: ""
+  card:
+    description: Optional path to write a 1200x630 share card SVG.
+    default: ""
+  model-provider:
+    description: Optional model that double-checks each promise (anthropic, openai, azure_openai, ollama). Rules only when empty.
+    default: ""
+  model-api-key:
+    description: API key for the model provider. Pass it from a secret.
+    default: ""
+
+outputs:
+  kept-rate:
+    description: Share of judged promises that were kept (0-1), or empty when too few to judge.
+    value: ${{ steps.scan.outputs.kept-rate }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install Keel
+      shell: bash
+      run: python -m pip install --quiet "${{ github.action_path }}[all]"
+    - name: Scan for promises
+      id: scan
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        KEEL_MODEL_PROVIDER: ${{ inputs.model-provider }}
+        KEEL_MODEL_API_KEY: ${{ inputs.model-api-key }}
+        REPO: ${{ inputs.repo }}
+        DAYS: ${{ inputs.days }}
+        BADGE: ${{ inputs.badge }}
+        CARD: ${{ inputs.card }}
+      run: |
+        args=(promises "$REPO" --days "$DAYS" --markdown "$GITHUB_STEP_SUMMARY" --json)
+        [ -n "$BADGE" ] && args+=(--badge "$BADGE")
+        [ -n "$CARD" ] && args+=(--card "$CARD")
+        keel "${args[@]}" > "$RUNNER_TEMP/keel-promises.json"
+        rate=$(python -c "import json,sys; r=json.load(open(sys.argv[1]))['stats']['kept_rate']; print('' if r is None else r)" "$RUNNER_TEMP/keel-promises.json")
+        echo "kept-rate=$rate" >> "$GITHUB_OUTPUT"

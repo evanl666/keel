@@ -1,0 +1,25 @@
+# Copy to .github/workflows/ in your repo. Posts a promise check to the job summary every Monday
+# and keeps a badge at .github/badges/promises.svg.
+name: Promise check
+on:
+  schedule: [{cron: "0 9 * * 1"}]
+  workflow_dispatch:
+permissions:
+  contents: write
+  issues: read
+  pull-requests: read
+jobs:
+  promises:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: evanl666/keel@main
+        with:
+          badge: .github/badges/promises.svg
+          # model-provider: anthropic
+          # model-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Commit the badge
+        run: |
+          git config user.name "keel-bot"; git config user.email "keel-bot@users.noreply.github.com"
+          git add .github/badges/promises.svg
+          git diff --cached --quiet || { git commit -m "Update promise badge"; git push; }

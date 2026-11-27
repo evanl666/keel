@@ -1,0 +1,9 @@
+name: Idea
+description: Something a team's steward should do.
+labels: [idea]
+body:
+  - type: textarea
+    attributes: {label: The moment, description: "Describe the situation in your team where this would help."}
+    validations: {required: true}
+  - type: textarea
+    attributes: {label: What the steward would do}

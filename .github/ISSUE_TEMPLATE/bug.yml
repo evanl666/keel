@@ -1,0 +1,11 @@
+name: Bug
+description: Something doesn't work as described.
+labels: [bug]
+body:
+  - type: textarea
+    attributes: {label: What happened, description: "What you did, what you expected, what you saw."}
+    validations: {required: true}
+  - type: textarea
+    attributes: {label: "Output of `keel doctor`", render: text}
+  - type: input
+    attributes: {label: How you run Keel, placeholder: "keel demo / Docker Compose / Helm, version"}

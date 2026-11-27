@@ -229,3 +229,30 @@ def test_demo_report_tells_a_story() -> None:
 )
 def test_promise_phrases(text: str, hit: bool) -> None:
     assert bool(promises.PROMISE_RE.search(text)) is hit
+
+
+def test_cli_json_stays_parseable_with_files(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    from typer import testing
+
+    from keel import cli
+
+    monkeypatch.setattr(promises, "scan", lambda repo, **_: promises.demo_report(repo))
+    out = testing.CliRunner().invoke(
+        cli.app,
+        [
+            "promises",
+            "acme/payments",
+            "--json",
+            "--badge",
+            str(tmp_path / "b.svg"),
+            "--card",
+            str(tmp_path / "c.svg"),
+            "--markdown",
+            str(tmp_path / "s.md"),
+        ],
+    )
+    assert out.exit_code == 0, out.output
+    assert json.loads(out.stdout)["repo"] == "acme/payments"
+    assert all((tmp_path / f).stat().st_size for f in ("b.svg", "c.svg", "s.md"))

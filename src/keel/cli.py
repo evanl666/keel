@@ -211,7 +211,7 @@ def _cli_model(provider: str, model: str) -> typing.Any:
             os.environ.get("KEEL_MODEL_BASE_URL", ""),
         )
     except llm.ModelUnavailable as exc:
-        console.print(f"[red]✗[/] {exc}")
+        notes.print(f"[red]✗[/] {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -262,7 +262,7 @@ def promises(
     if markdown is not None:
         with markdown.open("a", encoding="utf-8") as fh:
             fh.write(pr.markdown(report) + "\n")
-        console.print(f"[green]✓[/] Summary written to [bold]{markdown}[/]")
+        notes.print(f"[green]✓[/] Summary written to [bold]{markdown}[/]")
     if as_json:
         typer.echo(json.dumps(report.as_dict(), indent=2, default=str))
         return
