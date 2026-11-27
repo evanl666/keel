@@ -13,7 +13,7 @@ import typing
 import httpx
 from sqlalchemy import orm
 
-from keel import connections, feed, models
+from keel import connections, feed, models, svg
 
 STALE_PR_DAYS = 14  # Two sprints without activity: the author has likely moved on.
 REVIEW_WAIT_DAYS = 2  # Longer than this without a first review slows a team down noticeably.
@@ -54,6 +54,43 @@ def _age_days(ts: str, now: dt.datetime) -> float:
     return (now - dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))).total_seconds() / 86400
 
 
+def github_client(token: str = "", api_url: str = "https://api.github.com") -> httpx.Client:
+    """An httpx client for the GitHub REST API; the token is optional for public repos."""
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return httpx.Client(base_url=api_url, headers=headers, timeout=HTTP_TIMEOUT_S)
+
+
+def check_repo_name(repo: str) -> str:
+    """Normalize ``owner/name`` (a full github.com URL also works). Raises CheckupError when malformed."""
+    repo = repo.strip().removeprefix("https://github.com/").removesuffix(".git").strip("/")
+    if repo.count("/") != 1 or not all(repo.split("/")):
+        raise CheckupError("Use the form owner/name, like vercel/next.js.")
+    return repo
+
+
+def fetch(http: httpx.Client, path: str, **params: typing.Any) -> typing.Any:
+    """GET a GitHub API path. Returns None on 404; raises CheckupError with one plain line otherwise."""
+    try:
+        r = http.get(path, params=params)
+    except httpx.HTTPError as exc:
+        raise CheckupError(f"Couldn't reach GitHub ({type(exc).__name__}).") from exc
+    if r.status_code == 404:
+        return None
+    if r.status_code == 403 and r.headers.get("x-ratelimit-remaining") == "0":
+        raise CheckupError(
+            "GitHub's rate limit is used up. Add a token in Setup or try again within the hour."
+        )
+    if r.status_code in (401, 403):
+        raise CheckupError(
+            f"GitHub refused access ({r.status_code}). The token may lack access to this repo."
+        )
+    if r.status_code >= 400:
+        raise CheckupError(f"GitHub answered {r.status_code}.")
+    return r.json()
+
+
 def analyze(
     repo: str,
     token: str = "",
@@ -62,32 +99,12 @@ def analyze(
     now: dt.datetime | None = None,
 ) -> tuple[list[Finding], dict[str, typing.Any]]:
     """Inspect ``owner/name`` and return findings plus stats. Raises CheckupError with a plain reason."""
-    if repo.count("/") != 1 or not all(repo.split("/")):
-        raise CheckupError("Use the form owner/name, like vercel/next.js.")
+    repo = check_repo_name(repo)
     now = now or models.utcnow()
-    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    http = client or httpx.Client(base_url=api_url, headers=headers, timeout=HTTP_TIMEOUT_S)
+    http = client or github_client(token, api_url)
 
     def get(path: str, **params: typing.Any) -> typing.Any:
-        try:
-            r = http.get(path, params=params)
-        except httpx.HTTPError as exc:
-            raise CheckupError(f"Couldn't reach GitHub ({type(exc).__name__}).") from exc
-        if r.status_code == 404:
-            return None
-        if r.status_code == 403 and r.headers.get("x-ratelimit-remaining") == "0":
-            raise CheckupError(
-                "GitHub's rate limit is used up. Add a token in Setup or try again within the hour."
-            )
-        if r.status_code in (401, 403):
-            raise CheckupError(
-                f"GitHub refused access ({r.status_code}). The token may lack access to this repo."
-            )
-        if r.status_code >= 400:
-            raise CheckupError(f"GitHub answered {r.status_code}.")
-        return r.json()
+        return fetch(http, path, **params)
 
     meta = get(f"/repos/{repo}")
     if meta is None:
@@ -283,3 +300,35 @@ def run(session: orm.Session, checkup: models.Checkup) -> models.Checkup:
         f"/checkup?id={checkup.id}",
     )
     return checkup
+
+
+def badge(score_: int, grade_: str) -> str:
+    """README badge: ``keel checkup | B · 84``."""
+    return svg.badge("keel checkup", f"{grade_} · {score_}", svg.color_for_grade(grade_))
+
+
+def card(repo: str, findings: list[Finding], stats: dict[str, typing.Any]) -> str:
+    """The 1200×630 share card for a checkup."""
+    sc = score(findings)
+    g = grade(sc)
+    rows = [
+        ("Open PRs", f"{stats.get('open_prs', 0)} ({stats.get('stale_prs', 0)} stale)"),
+        ("Waiting for review", str(stats.get("awaiting_review", 0))),
+        (
+            "Median merge time",
+            f"{stats['median_merge_hours']} h" if stats.get("median_merge_hours") != "n/a" else "n/a",
+        ),
+        ("CI on default branch", str(stats.get("ci", "unknown"))),
+    ]
+    top = findings[0].title if findings else "Nothing to fix. This repo is in good shape."
+    return svg.card(
+        svg.Card(
+            eyebrow="Repo checkup",
+            title=repo,
+            big=g,
+            big_caption=f"{sc}/100 · {len(findings)} finding{'s' * (len(findings) != 1)}",
+            rows=rows,
+            quote=f"Fix first: {top}" if findings else top,
+            accent=svg.color_for_grade(g),
+        )
+    )

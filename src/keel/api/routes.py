@@ -693,6 +693,105 @@ def get_checkup(checkup_id: str, s: deps.Session, u: deps.User) -> dict:
     return serial.checkup(row)
 
 
+SVG_HEADERS = {"Cache-Control": "private, max-age=300"}  # Cards change at most hourly; five minutes is fresh.
+
+
+def _checkup_row(s: deps.Session, u: models.User, checkup_id: str) -> models.Checkup:
+    row = s.get(models.Checkup, checkup_id)
+    if row is None or row.org_id != u.org_id:
+        raise fastapi.HTTPException(404, "That checkup doesn't exist.")
+    if row.status != "done":
+        raise fastapi.HTTPException(409, "That checkup hasn't finished yet.")
+    return row
+
+
+@router.get("/checkups/{checkup_id}/badge.svg")
+def checkup_badge(checkup_id: str, s: deps.Session, u: deps.User) -> fastapi.Response:
+    """README badge for a finished checkup."""
+    from keel import checkup as ck
+
+    row = _checkup_row(s, u, checkup_id)
+    return fastapi.Response(ck.badge(row.score, row.grade), media_type="image/svg+xml", headers=SVG_HEADERS)
+
+
+@router.get("/checkups/{checkup_id}/card.svg")
+def checkup_card(checkup_id: str, s: deps.Session, u: deps.User) -> fastapi.Response:
+    """1200×630 share card for a finished checkup."""
+    from keel import checkup as ck
+
+    row = _checkup_row(s, u, checkup_id)
+    findings = [ck.Finding(**f) for f in row.findings or []]
+    return fastapi.Response(
+        ck.card(row.repo, findings, row.stats or {}), media_type="image/svg+xml", headers=SVG_HEADERS
+    )
+
+
+class PromiseScan(pydantic.BaseModel):
+    repo: str
+    days: int = pydantic.Field(default=30, ge=1, le=365)
+
+
+@router.post("/promises")
+def scan_promises(body: PromiseScan, s: deps.Session, u: deps.User) -> dict:
+    """Promise archaeology for a GitHub repo. Takes a few seconds; demo orgs get a sample for acme/* repos."""
+    from keel import checkup as ck
+    from keel import connections, llm, promises
+
+    org = s.get(models.Org, u.org_id)
+    try:
+        repo = ck.check_repo_name(body.repo)
+        if org.settings.get("demo") and repo.startswith("acme/"):
+            report = promises.demo_report(repo)
+        else:
+            res = connections.resolve(s, u.org_id, "github")
+            report = promises.scan(
+                repo,
+                days=body.days,
+                token=res.secrets.get("token", ""),
+                api_url=res.config.get("api_url") or "https://api.github.com",
+                model=llm.for_org(s, u.org_id),
+            )
+    except ck.CheckupError as exc:
+        raise fastapi.HTTPException(422, str(exc)) from exc
+    feed.audit(s, u.org_id, f"user:{u.email}", "promises.scanned", repo, f"days={body.days}")
+    return {
+        **report.as_dict(),
+        "badge_svg": promises.badge(report),
+        "card_svg": promises.card(report),
+        "markdown": promises.markdown(report),
+    }
+
+
+def _wrapped_facts(s: deps.Session, u: models.User, slug: str, days: int) -> dict:
+    from keel import llm
+    from keel import wrapped as wr
+
+    team = deps.team_or_404(s, u, slug)
+    facts = wr.compute(s, team, days=days)
+    facts["headline"] = wr.headline(llm.for_org(s, u.org_id), facts)
+    return facts
+
+
+@router.get("/teams/{slug}/wrapped")
+def team_wrapped(
+    slug: str, s: deps.Session, u: deps.User, days: int = fastapi.Query(30, ge=1, le=366)
+) -> dict:
+    """Team Wrapped: the team's recap for the last ``days`` days."""
+    return _wrapped_facts(s, u, slug, days)
+
+
+@router.get("/teams/{slug}/wrapped/card.svg")
+def team_wrapped_card(
+    slug: str, s: deps.Session, u: deps.User, days: int = fastapi.Query(30, ge=1, le=366)
+) -> fastapi.Response:
+    """Team Wrapped as a 1200×630 share card."""
+    from keel import wrapped as wr
+
+    return fastapi.Response(
+        wr.card(_wrapped_facts(s, u, slug, days)), media_type="image/svg+xml", headers=SVG_HEADERS
+    )
+
+
 @router.post("/demo/tick")
 def demo_tick(u: deps.User) -> dict:
     """Play the next scripted demo event (demo orgs only)."""

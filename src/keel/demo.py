@@ -44,6 +44,25 @@ PEOPLE = {
     "platform": ["Sam Okafor", "Iris Chen", "Theo Walsh"],
     "mobile": ["Ravi Kumar", "Nora Lind", "Kai Tanaka"],
 }
+# slug, title, owner, age (days), closed (days ago), due (days from now; negative is past), asking team
+HISTORY = [
+    ("payments", "Retry failed payouts with backoff", "Maya Patel", 27, 24, -23, None),
+    ("payments", "Add 3DS fallback for EU cards", "Lena Ortiz", 25, 19, -18, "mobile"),
+    ("payments", "Alert on webhook signature failures", "Jonas Berg", 21, 17.5, -16, "platform"),
+    ("payments", "Document the refund states", "Lena Ortiz", 16, 12, -11, None),
+    ("payments", "Fix duplicate receipt emails", "Maya Patel", 13, 12.8, -12, "mobile"),
+    ("payments", "Archive 2025 dispute evidence", "Jonas Berg", 10, 6, -5, None),
+    ("platform", "Bump Node base image to 22", "Sam Okafor", 28, 22, -21, "payments"),
+    ("platform", "Grant Mobile a staging namespace", "Theo Walsh", 24, 23.6, -23, "mobile"),
+    ("platform", "Rotate the shared Redis password", "Iris Chen", 20, 14, -13, "payments"),
+    ("platform", "Speed up the docker layer cache", "Theo Walsh", 18, 9, -12, None),
+    ("platform", "Add a read replica for reporting", "Sam Okafor", 15, 7, -6, "mobile"),
+    ("platform", "Turn on audit logs for the CI bot", "Iris Chen", 11, 5, -4, "payments"),
+    ("mobile", "Hotfix: login loop on iOS 19", "Ravi Kumar", 26, 25.97, -25, None),
+    ("mobile", "Ship the Apple Pay button", "Nora Lind", 22, 15, -14, None),
+    ("mobile", "Translate checkout into Japanese", "Kai Tanaka", 17, 8, -10, None),
+    ("mobile", "Answer Platform's push-token question", "Ravi Kumar", 9, 8.96, -8, "platform"),
+]
 ALL_DUTIES = ["ledger", "front_desk", "rhythm", "services", "knowledge", "chores"]
 
 DOCS = {
@@ -366,6 +385,21 @@ def seed(session: orm.Session, now: dt.datetime | None = None) -> models.Org:
     )
     c(mob, "Dark mode for receipts", due=20, status="proposed", owner="Kai Tanaka", priority="low", age=7)
     c(plat, "Review Payments' rotation plan", due=2, status="proposed", requester=pay, age=0.5)
+
+    # A month of closed work so Team Wrapped has a story: Payments lands everything on time, Platform mostly
+    # serves other teams, Mobile closes some asks within the hour.
+    by_slug = {"payments": pay, "platform": plat, "mobile": mob}
+    for slug, title, owner, age, closed, due, asker in HISTORY:
+        c(
+            by_slug[slug],
+            title,
+            due=due,
+            status="done",
+            owner=owner,
+            age=age,
+            closed=closed,
+            requester=by_slug[asker] if asker else None,
+        )
 
     for slug, docs in DOCS.items():
         for title, label, content in docs:

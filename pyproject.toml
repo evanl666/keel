@@ -38,6 +38,9 @@ anthropic = ["langchain-anthropic>=1.0"]
 openai = ["langchain-openai>=1.0"]
 ollama = ["langchain-ollama>=1.0"]
 all = ["langchain-anthropic>=1.0", "langchain-openai>=1.0", "langchain-ollama>=1.0"]
+mcp = [
+    "mcp>=2.0",
+]
 
 [project.scripts]
 keel = "keel.cli:app"

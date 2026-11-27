@@ -27,6 +27,8 @@ app = typer.Typer(
     help="Keel: one AI steward per team.", no_args_is_help=True, add_completion=False, rich_markup_mode="rich"
 )
 console = rich.console.Console()
+# Progress, notes and errors: stderr keeps stdout clean for --json and pipes.
+notes = rich.console.Console(stderr=True)
 SEVERITY_STYLE = {"high": "bold red", "medium": "yellow", "low": "cyan"}
 GRADE_STYLE = {"A": "bold green", "B": "green", "C": "yellow", "D": "dark_orange", "F": "bold red"}
 RUNNER_POLL_S = (
@@ -142,6 +144,8 @@ def checkup(
     repo: str = typer.Argument(..., help="owner/name, e.g. vercel/next.js"),
     token: str = typer.Option("", envvar="GITHUB_TOKEN", help="GitHub token (raises the rate limit)."),
     api_url: str = typer.Option("https://api.github.com", help="GitHub Enterprise API URL."),
+    badge: pathlib.Path = typer.Option(None, "--badge", help="Also write a README badge SVG here."),
+    card: pathlib.Path = typer.Option(None, "--card", help="Also write a 1200×630 share card SVG here."),
 ) -> None:
     """A 30-second health checkup of a GitHub repo: what a steward would fix first."""
     from keel import checkup as ck
@@ -155,6 +159,8 @@ def checkup(
             raise typer.Exit(1) from exc
     sc = ck.score(findings)
     g = ck.grade(sc)
+    _write_svg(badge, ck.badge(sc, g), "Badge")
+    _write_svg(card, ck.card(repo, findings, stats), "Share card")
     console.print(
         rich.panel.Panel.fit(
             f"[{GRADE_STYLE[g]}]{g}[/]  [bold]{sc}[/]/100   {repo}",
@@ -181,6 +187,195 @@ def checkup(
         )
     console.print(t)
     console.print("\n[dim]A Keel steward would keep these on a ledger and nudge owners. Try: keel demo[/]")
+
+
+def _write_svg(path: pathlib.Path | None, content: str, what: str) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    notes.print(f"[green]✓[/] {what} written to [bold]{path}[/]")
+
+
+def _cli_model(provider: str, model: str) -> typing.Any:
+    """A chat model for one-off CLI commands, or None for the rules. Exits with one plain line on failure."""
+    from keel import llm
+
+    if not provider or provider == "replay":
+        return None
+    try:
+        return llm.build(
+            provider,
+            model,
+            os.environ.get("KEEL_MODEL_API_KEY", ""),
+            os.environ.get("KEEL_MODEL_BASE_URL", ""),
+        )
+    except llm.ModelUnavailable as exc:
+        console.print(f"[red]✗[/] {exc}")
+        raise typer.Exit(1) from exc
+
+
+PROMISE_STYLE = {
+    "kept": "green",
+    "overdue": "bold red",
+    "quiet": "yellow",
+    "dropped": "dim",
+    "follow_up": "cyan",
+    "open": "white",
+}
+
+
+@app.command()
+def promises(
+    repo: str = typer.Argument(..., help="owner/name, e.g. vercel/next.js"),
+    days: int = typer.Option(30, "--days", min=1, max=365, help="How far back to look."),
+    token: str = typer.Option("", envvar="GITHUB_TOKEN", help="GitHub token (raises the rate limit)."),
+    api_url: str = typer.Option("https://api.github.com", help="GitHub Enterprise API URL."),
+    provider: str = typer.Option(
+        "",
+        envvar="KEEL_MODEL_PROVIDER",
+        help="Model that double-checks each promise (rules alone without one).",
+    ),
+    model: str = typer.Option("", envvar="KEEL_MODEL_NAME", help="Model name for the provider."),
+    badge: pathlib.Path = typer.Option(None, "--badge", help="Also write a README badge SVG here."),
+    card: pathlib.Path = typer.Option(None, "--card", help="Also write a 1200×630 share card SVG here."),
+    markdown: pathlib.Path = typer.Option(
+        None, "--markdown", help="Also write a Markdown summary (e.g. $GITHUB_STEP_SUMMARY)."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print the full report as JSON."),
+) -> None:
+    """Promise archaeology: find "I'll fix it by Friday" in a repo's comments and see which were kept."""
+    import json
+
+    from keel import checkup as ck
+    from keel import promises as pr
+
+    chat = _cli_model(provider, model)
+    with notes.status(f"Reading {days} days of comments on [bold]{repo}[/]…"):
+        try:
+            report = pr.scan(repo, days=days, token=token, api_url=api_url, model=chat)
+        except ck.CheckupError as exc:
+            notes.print(f"[red]✗[/] {exc}")
+            raise typer.Exit(1) from exc
+    _write_svg(badge, pr.badge(report), "Badge")
+    _write_svg(card, pr.card(report), "Share card")
+    if markdown is not None:
+        with markdown.open("a", encoding="utf-8") as fh:
+            fh.write(pr.markdown(report) + "\n")
+        console.print(f"[green]✓[/] Summary written to [bold]{markdown}[/]")
+    if as_json:
+        typer.echo(json.dumps(report.as_dict(), indent=2, default=str))
+        return
+    st = report.stats
+    console.print(
+        rich.panel.Panel.fit(
+            f"[bold]{pr.rate_text(st['kept_rate'])}[/] kept   {st['promises']} promises in "
+            f"{report.scanned_comments} comments   {report.repo}",
+            title="⚓ Keel promise check",
+            border_style="magenta",
+        )
+    )
+    if not report.promises:
+        console.print("\n[green]No promises found in that window.[/] Try a longer one with --days 90.")
+        return
+    t = rich.table.Table(header_style="bold", show_lines=False)
+    t.add_column("Status")
+    t.add_column("Who")
+    t.add_column("Promise", overflow="fold")
+    t.add_column("Said", justify="right")
+    order = {s: i for i, s in enumerate(("overdue", "quiet", "open", "follow_up", "dropped", "kept"))}
+    for p in sorted(report.promises, key=lambda p: (order[p.status], -p.age_days)):
+        t.add_row(
+            f"[{PROMISE_STYLE[p.status]}]{pr.STATUS_LABEL[p.status]}[/]",
+            f"@{p.who}",
+            rich.markup.escape(p.what) + f"\n[dim]“{rich.markup.escape(p.quote)}”  {p.url}[/]",
+            f"{round(p.age_days)}d ago" + (f"\n[dim]due {p.due}[/]" if p.due else ""),
+        )
+    console.print(t)
+    if st["kept_rate"] is None:
+        console.print(f"[dim]Too few settled promises for a rate (need {pr.MIN_JUDGED}).[/]")
+    hint = "" if chat else " Add --provider for a model to double-check each promise."
+    console.print(
+        "[dim]Kept = the issue or PR closed as completed after the promise. Not checked: "
+        + "; ".join(report.not_checked)
+        + "."
+        + hint
+        + "[/]"
+    )
+
+
+@app.command()
+def wrapped(
+    team: str = typer.Argument(..., help="Team slug, e.g. payments"),
+    days: int = typer.Option(30, "--days", min=1, max=366, help="Period to recap."),
+    card: pathlib.Path = typer.Option(None, "--card", help="Also write a 1200×630 share card SVG here."),
+    as_json: bool = typer.Option(False, "--json", help="Print the recap as JSON."),
+) -> None:
+    """Team Wrapped: a team's month of promises as a recap card (Spotify Wrapped for work)."""
+    import json
+
+    import sqlalchemy as sa
+
+    from keel import db, llm, models, steward
+    from keel import wrapped as wr
+
+    db.migrate()
+    with db.session() as s:
+        org = s.scalar(sa.select(models.Org).limit(1))
+        row = steward.team_by_slug(s, org.id, team) if org else None
+        if row is None:
+            notes.print(f"[red]✗[/] No team called {team!r}. Run [bold]keel demo[/] or create one first.")
+            raise typer.Exit(1)
+        facts = wr.compute(s, row, days=days)
+        facts["headline"] = wr.headline(llm.for_org(s, org.id), facts)
+    _write_svg(card, wr.card(facts), "Share card")
+    if as_json:
+        typer.echo(json.dumps(facts, indent=2, default=str))
+        return
+    rate = facts["on_time_rate"]
+    console.print(
+        rich.panel.Panel.fit(
+            f"[bold]{facts['persona']['name']}[/]\n{rich.markup.escape(facts['headline'])}",
+            title=f"⚓ {facts['team']} Wrapped · {facts['from']} → {facts['to']}",
+            border_style="magenta",
+        )
+    )
+    t = rich.table.Table(show_header=False, box=None, pad_edge=False)
+    t.add_row("[dim]kept on time[/]", "n/a" if rate is None else f"{round(rate * 100)}%")
+    t.add_row("[dim]kept · new[/]", f"{facts['kept']} · {facts['made']}")
+    t.add_row("[dim]longest on-time streak[/]", str(facts["longest_on_time_streak"]))
+    if facts["fastest"]:
+        t.add_row("[dim]fastest close[/]", f"{facts['fastest']['key']} in {facts['fastest']['hours']:g} h")
+    if facts["best_partner"]:
+        t.add_row(
+            "[dim]best partner[/]", f"{facts['best_partner']['team']} ({facts['best_partner']['count']})"
+        )
+    if facts["top_closers"]:
+        t.add_row("[dim]top closers[/]", ", ".join(f"{c['who']} ({c['kept']})" for c in facts["top_closers"]))
+    if facts["busiest_day"]:
+        t.add_row("[dim]busiest day[/]", facts["busiest_day"])
+    if facts["oldest_open"]:
+        o = facts["oldest_open"]
+        t.add_row("[dim]still open[/]", f"{o['key']} {rich.markup.escape(o['title'])} ({o['days']} days)")
+    console.print(t)
+
+
+@app.command()
+def mcp(
+    user: str = typer.Option(
+        "",
+        "--as",
+        envvar="KEEL_MCP_USER",
+        help="Email of the Keel user the tools act as (sets what they can see).",
+    ),
+) -> None:
+    """Run an MCP server on stdio so Claude Code, Cursor or any MCP client can talk to your teams' stewards."""
+    try:
+        from keel import mcp_server
+    except ImportError as exc:
+        console.print("[red]✗[/] The MCP extra isn't installed. Run: pip install 'keel-steward[mcp]'")
+        raise typer.Exit(1) from exc
+    mcp_server.serve(user)
 
 
 @app.command()
