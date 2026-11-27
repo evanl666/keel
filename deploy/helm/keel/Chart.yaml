@@ -1,0 +1,8 @@
+apiVersion: v2
+name: keel
+description: One AI steward per team. Web, worker, migrations, optional bundled Postgres.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/evanl666/keel
+keywords: [ai, agents, slack, team, steward]

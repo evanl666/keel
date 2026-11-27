@@ -1,0 +1,65 @@
+image:
+  repository: ghcr.io/evanl666/keel
+  tag: ""            # defaults to the chart appVersion
+  pullPolicy: IfNotPresent
+
+# Base URL people open; used for SSO redirects and links in Slack.
+baseUrl: https://keel.example.com
+
+# Secrets. Either let the chart create one from these values, or point at your own Secret
+# (keys: KEEL_SECRET_KEY, KEEL_DATABASE_URL, and any KEEL_* integration keys).
+existingSecret: ""
+secretKey: ""        # required when existingSecret is empty: `keel secret`
+extraSecretEnv: {}   # e.g. KEEL_SLACK_BOT_TOKEN: xoxb-...
+
+# Non-secret settings (KEEL_* env).
+env:
+  KEEL_LOG_LEVEL: info
+
+database:
+  # External Postgres (recommended). Ignored when postgres.enabled is true.
+  url: ""            # postgresql+psycopg://user:pass@host:5432/keel
+
+# Bundled single-replica Postgres for trials. Use a managed database in production.
+postgres:
+  enabled: false
+  image: postgres:16-alpine
+  password: ""
+  storage: 10Gi
+  storageClass: ""
+
+web:
+  replicas: 2
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+
+worker:
+  replicas: 2
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  host: keel.example.com
+  annotations: {}
+  tls: []            # - {secretName: keel-tls, hosts: [keel.example.com]}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

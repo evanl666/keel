@@ -1,0 +1,33 @@
+# keel apply -f examples/keel.yaml
+# Declares teams, their stewards, watched services and knowledge. Safe to re-run: it never deletes,
+# and it never raises a steward's level (people do that on the level page).
+org: Acme
+default_level: 1            # L1 Draft: stewards draft, people approve.
+
+teams:
+  - slug: payments
+    name: Payments
+    steward: {name: Pip, emoji: "🦉"}
+    slack_channel: "#payments"          # or a channel ID like C0123ABCD
+    github_repos: [acme/payments]
+    timezone: America/Los_Angeles
+    brief_hour: 9
+    services:
+      - name: checkout-api
+        url: https://checkout.acme.example/healthz
+        owner: Maya Patel
+        runbooks:
+          - {id: restart-pods, name: Restart pods, min_level: 4}
+    knowledge:
+      - path: docs/webhook-signing.md
+        label: internal
+
+  - slug: platform
+    name: Platform
+    steward: {name: Bolt, emoji: "🦫", duties: [ledger, front_desk, rhythm, services, knowledge]}
+    slack_channel: "#platform"
+    github_repos: [acme/platform]
+    knowledge:
+      - title: Deploy freeze
+        content: No deploys after 3pm Friday Pacific. Hotfixes need an on-call approval in #platform.
+        label: internal

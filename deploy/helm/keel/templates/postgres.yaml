@@ -1,0 +1,55 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "keel.fullname" . }}-postgres
+  labels: {{- include "keel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: {{ include "keel.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels: {{- include "keel.selector" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels: {{- include "keel.selector" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      securityContext: {runAsUser: 70, fsGroup: 70}
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          env:
+            - {name: POSTGRES_USER, value: keel}
+            - {name: POSTGRES_DB, value: keel}
+            - {name: POSTGRES_PASSWORD, value: {{ .Values.postgres.password | quote }}}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          ports:
+            - {name: pg, containerPort: 5432}
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", "keel", "-d", "keel"]}
+            periodSeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgres.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources: {requests: {storage: {{ .Values.postgres.storage }}}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "keel.fullname" . }}-postgres
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "keel.selector" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+  ports:
+    - {name: pg, port: 5432, targetPort: pg}
+{{- end }}

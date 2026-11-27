@@ -1,0 +1,4 @@
+# keel runner --allow examples/runner-allow.yaml
+# Runbook id → the exact command this runner may run. Commands sent by the server are never executed.
+restart-pods: kubectl -n payments rollout restart deploy/checkout-api
+rollback: kubectl -n payments rollout undo deploy/checkout-api

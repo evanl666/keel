@@ -1,0 +1,13 @@
+Keel is starting.
+
+{{- if .Values.ingress.enabled }}
+Open https://{{ .Values.ingress.host }} and finish the setup wizard.
+{{- else }}
+  kubectl port-forward svc/{{ include "keel.fullname" . }} 8420:{{ .Values.service.port }}
+  open http://localhost:8420   # then finish the setup wizard
+{{- end }}
+
+Web replicas: {{ .Values.web.replicas }}   Workers: {{ .Values.worker.replicas }}
+{{- if .Values.postgres.enabled }}
+Bundled Postgres is for trials. Use a managed database (database.url) in production.
+{{- end }}

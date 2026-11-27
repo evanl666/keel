@@ -1,0 +1,77 @@
+[project]
+name = "keel-steward"
+version = "0.1.0"
+description = "Keel: an open-source AI steward for every team. Keeps commitments, answers the front desk, runs the rhythm, watches services."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [{ name = "Keel contributors" }]
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "sqlalchemy>=2.0.30",
+  "alembic>=1.13",
+  "psycopg[binary]>=3.2",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "typer>=0.12",
+  "rich>=13.7",
+  "httpx>=0.27",
+  "pyyaml>=6",
+  "jinja2>=3.1",
+  "itsdangerous>=2.2",
+  "authlib>=1.3",
+  "joserfc>=1.0",
+  "cryptography>=42",
+  "prometheus-client>=0.20",
+  "langchain>=1.0",
+  "langgraph>=1.0",
+  "langchain-core>=1.0",
+  "slack-bolt>=1.20",
+  "slack-sdk>=3.30",
+  "aiohttp>=3.9",
+  "markdown-it-py>=3",
+]
+
+[project.optional-dependencies]
+anthropic = ["langchain-anthropic>=1.0"]
+openai = ["langchain-openai>=1.0"]
+ollama = ["langchain-ollama>=1.0"]
+all = ["langchain-anthropic>=1.0", "langchain-openai>=1.0", "langchain-ollama>=1.0"]
+
+[project.scripts]
+keel = "keel.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "respx>=0.21", "ruff>=0.5"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/keel"]
+artifacts = ["src/keel/web_dist/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "live: calls a real model (needs a configured provider; skipped otherwise)",
+  "postgres: needs KEEL_TEST_DATABASE_URL pointing at Postgres",
+]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PLW"]
+ignore = [
+  "E501",    # long lines: user-facing sentences read better unbroken; the formatter keeps code within 110.
+  "PLW0603", # module-level singletons (engine, vault key) are reset deliberately via reset().
+  "B008",    # FastAPI's Depends()/Header() defaults are the framework's idiom.
+  "RUF001",  # en dashes and curly quotes are intentional in UI copy.
+  "RUF002",
+  "RUF003",
+]

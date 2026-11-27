@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.db
+*.db-journal
+.env
+dist/
+build/
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+src/keel/web_dist/

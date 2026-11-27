@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "keel.fullname" . }}-worker
+  labels: {{- include "keel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels: {{- include "keel.selector" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels: {{- include "keel.selector" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Workers claim jobs with FOR UPDATE SKIP LOCKED, so any number can run side by side.
+      # Schema upgrade before start. Postgres advisory lock: one replica migrates, the rest wait, then no-op.
+      initContainers:
+        - name: migrate
+          image: {{ include "keel.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          {{- include "keel.podEnv" . | nindent 10 }}
+      containers:
+        - name: worker
+          image: {{ include "keel.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["worker"]
+          {{- include "keel.podEnv" . | nindent 10 }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+      {{- include "keel.podVolumes" . | nindent 6 }}

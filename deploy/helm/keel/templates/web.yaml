@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "keel.fullname" . }}-web
+  labels: {{- include "keel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels: {{- include "keel.selector" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels: {{- include "keel.selector" . | nindent 8 }}
+        app.kubernetes.io/component: web
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Schema upgrade before start. Postgres advisory lock: one replica migrates, the rest wait, then no-op.
+      initContainers:
+        - name: migrate
+          image: {{ include "keel.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          {{- include "keel.podEnv" . | nindent 10 }}
+      containers:
+        - name: web
+          image: {{ include "keel.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          env:
+            # Workers run as their own Deployment; web pods only serve.
+            - {name: KEEL_RUN_WORKER_IN_PROCESS, value: "false"}
+          {{- include "keel.podEnv" . | nindent 10 }}
+          ports:
+            - {name: http, containerPort: 8420}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          resources: {{- toYaml .Values.web.resources | nindent 12 }}
+      {{- include "keel.podVolumes" . | nindent 6 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "keel.fullname" . }}
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector: {{- include "keel.selector" . | nindent 4 }}
+    app.kubernetes.io/component: web
+  ports:
+    - {name: http, port: {{ .Values.service.port }}, targetPort: http}
