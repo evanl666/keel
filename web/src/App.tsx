@@ -20,6 +20,8 @@ import { Audit } from "./pages/Audit";
 import { Setup } from "./pages/Setup";
 import { Login } from "./pages/Login";
 import { NotFound } from "./pages/NotFound";
+import { People } from "./pages/People";
+import { InviteAccept } from "./pages/InviteAccept";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,7 +37,7 @@ function Splash() {
   return (
     <div className="app-bg h-full grid place-items-center">
       <div className="animate-pulse">
-        <KeelMark size={40} />
+        <KeelMark size={32} />
       </div>
     </div>
   );
@@ -50,8 +52,8 @@ function Gate() {
       <div className="app-bg h-full grid place-items-center text-center px-6">
         <div>
           <KeelMark size={40} />
-          <div className="mt-4 text-[15px] font-semibold">Keel's server didn't answer</div>
-          <div className="mt-1 text-[13px] text-muted">{error.message}</div>
+          <div className="mt-4 text-[16px] font-semibold">Keel's server didn't answer</div>
+          <div className="mt-1 text-[14px] text-muted">{error.message}</div>
         </div>
       </div>
     );
@@ -71,6 +73,7 @@ function Gate() {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/invite/:token" element={<InviteAccept />} />
         <Route path="*" element={<Navigate to="/login" replace state={{ from: loc.pathname }} />} />
       </Routes>
     );
@@ -79,6 +82,7 @@ function Gate() {
     <StreamProvider enabled>
       <Routes>
         <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/invite/:token" element={<InviteAccept />} />
         <Route element={<Layout />}>
           <Route index element={<Overview />} />
           <Route path="teams/:slug" element={<TeamHome />} />
@@ -92,6 +96,7 @@ function Gate() {
           <Route path="promises" element={<Promises />} />
           <Route path="audit" element={<Audit />} />
           <Route path="setup" element={<Setup />} />
+          <Route path="people" element={<People />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

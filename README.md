@@ -15,8 +15,9 @@ uv tool install .                     # or: pipx install .
 keel demo                             # a live company of three teams in your browser, no keys needed
 ```
 
-> v0.1 isn't on PyPI or GHCR yet, so install from source as above. Once published, this becomes
-> `pipx install keel-steward` and the release wheel carries the built UI.
+> Running it for real teams? Skip the build: the published image is `ghcr.io/evanl666/keel:0.2`, see
+> [Deploy](#deploy). Each [release](https://github.com/evanl666/keel/releases) also carries a wheel with the UI
+> built in (`pipx install keel_steward-*.whl`).
 
 ## Three things to try in a minute
 
@@ -154,44 +155,59 @@ branch, CODEOWNERS, CONTRIBUTING and SECURITY.md. Read-only.
 
 ### 3. Run it for your teams
 
-Pick one of the [deploy](#deploy) paths, open the URL, and the setup wizard walks you through:
-**admin → model → Slack → GitHub → policy → first team**. Each step tests the connection before saving and says
-in one line why it failed if it does.
+You don't write code: you run a container next to a Postgres, finish a setup page, and invite people.
+**[docs/install.md](docs/install.md)** walks through it in about 15 minutes.
 
 ## Deploy
 
 | Path | For | Database |
 | --- | --- | --- |
 | `keel demo` | Trying it | SQLite (file) |
-| Docker Compose | One server, a few teams | Postgres 16 (bundled) |
+| Docker Compose | One server, a few teams | Postgres 16 (bundled, created and migrated on start) |
 | Helm | Kubernetes, SSO, many teams | Your Postgres (or bundled for a trial) |
 
 ### Docker Compose
 
 ```bash
-git clone https://github.com/evanl666/keel && cd keel
-cp deploy/.env.example deploy/.env
-docker build -t ghcr.io/evanl666/keel:latest .           # until the image is published
-docker run --rm ghcr.io/evanl666/keel:latest secret      # paste into KEEL_SECRET_KEY; also set POSTGRES_PASSWORD
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+curl -fsSLO https://raw.githubusercontent.com/evanl666/keel/main/deploy/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/evanl666/keel/main/deploy/.env.example -o .env
+docker run --rm ghcr.io/evanl666/keel:0.2 secret     # paste into KEEL_SECRET_KEY; also set POSTGRES_PASSWORD
+docker compose --env-file .env up -d
+docker compose logs keel | grep "setup code"         # the setup page asks for it
 open http://localhost:8420
 ```
+
+The setup page walks you through **admin → model → Slack → GitHub → policy → first team**; each step tests the
+connection before saving. Then **People → Invite** your team.
 
 ### Helm
 
 ```bash
-helm install keel deploy/helm/keel \
-  --set secretKey=$(keel secret) \
+helm install keel oci://ghcr.io/evanl666/charts/keel --version 0.2.0 \
+  --set secretKey=$(docker run --rm ghcr.io/evanl666/keel:0.2 secret) \
   --set database.url='postgresql+psycopg://keel:PASS@db.internal:5432/keel' \
   --set baseUrl=https://keel.example.com \
   --set ingress.enabled=true --set ingress.host=keel.example.com \
   --set env.KEEL_OIDC_ISSUER=https://login.example.com --set env.KEEL_OIDC_CLIENT_ID=keel \
-  --set extraSecretEnv.KEEL_OIDC_CLIENT_SECRET=...
+  --set extraSecretEnv.KEEL_OIDC_CLIENT_SECRET=... \
+  --set backup.enabled=true
 ```
 
-The chart runs separate web and worker Deployments, migrates in an init container under a Postgres advisory
-lock, uses a read-only root filesystem as uid 10001, and exposes `/healthz`, `/readyz` and `/metrics`
-(Prometheus). `--set postgres.enabled=true` bundles a Postgres for trials; use a managed one in production.
+Separate web and worker Deployments, migrations in an init container under a Postgres advisory lock, uid 10001
+with a read-only root filesystem, `/healthz`, `/readyz`, Prometheus `/metrics`, and an optional nightly backup
+CronJob. `--set postgres.enabled=true --set postgres.password=...` bundles a Postgres for trials.
+
+### Guides
+
+| | |
+| --- | --- |
+| [Install](docs/install.md) | Compose or Helm, the setup code, the first team |
+| [Slack](docs/slack.md) | The app manifest, channel names, DMs, `/keel ask` |
+| [GitHub](docs/github.md) | Token or App; polling (no public URL) or webhooks |
+| [People and SSO](docs/sso.md) | Invites, roles, OIDC, IdP groups → teams, audit export |
+| [Knowledge](docs/knowledge.md) | Docs by hand, synced pages and GitHub folders, review dates |
+| [Backups](docs/backup.md) · [Upgrades](docs/upgrade.md) · [Operations](docs/operations.md) | Running it |
+| [API](docs/api.md) · [CHANGELOG](CHANGELOG.md) | |
 
 ### Configuration as code: `keel apply`
 
@@ -205,6 +221,9 @@ teams:
     steward: {name: Pip, emoji: "🦉"}
     slack_channel: "#payments"
     github_repos: [acme/payments]
+    sso_groups: [eng-payments]          # IdP group members join on SSO sign-in
+    members:                            # people already in Keel (invite new ones from People)
+      - {email: maya@acme.com, role: admin}
     services:
       - {name: checkout-api, url: https://checkout.acme.example/healthz}
     knowledge:
@@ -213,7 +232,7 @@ teams:
 
 ```bash
 keel apply -f keel.yaml --dry-run    # shows + create, ~ update, = keep, ! skip
-keel apply -f keel.yaml              # safe to re-run; never deletes, never raises a level
+keel apply -f keel.yaml              # safe to re-run; never deletes or removes people, never raises a level
 ```
 
 ### Runbooks without inbound access: `keel runner`
@@ -229,16 +248,20 @@ KEEL_RUNNER_TOKEN=... keel runner --server https://keel.example.com --allow runn
 
 ```bash
 keel doctor                 # checks database, migrations, secret key, model, Slack, GitHub, web UI
-keel backup -o keel.dump    # pg_dump, or the SQLite backup API
-keel restore keel.dump
+keel setup-code             # the code the setup page asks for
+keel backup                 # → $KEEL_BACKUP_DIR/keel-<time>.dump; -o - streams to stdout
+keel restore keel.dump      # or: keel restore - --yes < keel.dump
 keel worker                 # run the worker separately (Helm does this for you)
 ```
+
+See [operations](docs/operations.md) for metrics and alerts, [backups](docs/backup.md), and
+[upgrades](docs/upgrade.md).
 
 ## How it works
 
 ```
  Slack (Socket Mode) ─┐                        ┌─▶ Slack / GitHub / other team's steward / runner
- GitHub webhooks ─────┼─▶ inbox ─▶ steward ─▶ gateway (outbox) ──┘
+ GitHub poll/webhook ─┼─▶ inbox ─▶ steward ─▶ gateway (outbox) ──┘
  Web UI / API ────────┘       brain: triage, answer      │
                               ledger · knowledge · levels └─▶ reconcile on unknown outcome
                          Postgres: state + job queue (FOR UPDATE SKIP LOCKED). No Redis, no broker.
@@ -259,11 +282,14 @@ keel worker                 # run the worker separately (Helm does this for you)
 - **Models.** Anthropic, OpenAI, Azure OpenAI, Ollama, or the Claude Code CLI; or none (the rule-based brain).
   The front desk is a LangChain `create_agent` with a small set of ledger and knowledge tools.
 
-## What's in v0.1, and what isn't yet
+## What's in v0.2, and what isn't yet
 
-Built: the six duties, learning from corrections and open questions, levels with promotion and demotion, the gateway with reconciliation, Slack (Socket
-Mode), GitHub (token or App, webhooks), OIDC SSO with an admin group, the setup wizard, the web UI with a live
-stream, `keel apply`, the runner, Compose and Helm, Prometheus metrics, audit log, backup and restore.
+Built: the six duties, learning from corrections and open questions, levels with promotion and demotion, the
+gateway with reconciliation, Slack (Socket Mode: channels by name, DMs, `/keel ask` with sources), GitHub (token
+or App, polling or webhooks), people and invites, team roles, OIDC SSO with groups → teams, knowledge sync from
+pages and GitHub folders with review dates, the setup wizard, the web UI with a live stream, `keel apply`, the
+runner, published images and Helm chart, Prometheus metrics, audit log with export and retention, backup and
+restore. See the [CHANGELOG](CHANGELOG.md).
 
 Not yet, on purpose:
 
@@ -272,6 +298,10 @@ Not yet, on purpose:
 - **Postgres row-level security.** Tenancy is enforced in the application layer; one org per install.
 - **Vector search.** Knowledge uses BM25, which is enough for team-sized notes. pgvector later.
 - **Multi-org per install.** The schema is ready; the UI isn't.
+- **Email.** Keel shows invite links; it doesn't send mail.
+- **SCIM.** People come from invites or SSO sign-in; deprovision by disabling them in Keel (or your IdP blocks
+  sign-in).
+- **Knowledge behind a login** (Confluence, Notion, Google Docs). Sync public pages or a GitHub folder for now.
 
 ## Develop
 
@@ -329,14 +359,34 @@ L0 观察 → L1 起草（每条都要人批）→ L2 协助（可在本团队�
 
 ```bash
 git clone https://github.com/evanl666/keel && cd keel
-(cd web && npm ci && npm run build) && uv tool install .   # v0.1 尚未发布到 PyPI，先从源码安装
+(cd web && npm ci && npm run build) && uv tool install .   # 体验用；正式部署直接用镜像
 keel demo                       # 浏览器里打开一个三团队的示例公司，无需任何密钥
 keel checkup vercel/next.js     # 给真实仓库做体检，只读
 ```
 
-正式使用：Docker Compose（单机，自带 Postgres）或 Helm（Kubernetes、SSO、多团队）。打开网址后，
-设置向导依次引导：**管理员 → 模型 → Slack → GitHub → 策略 → 第一个团队**；每一步先测试连接再保存，
-失败时用一句话说明原因。配置即代码用 `keel apply -f keel.yaml`；内网 runbook 用 `keel runner`
+正式使用不用写代码：跑一个容器 + 一个 Postgres，打开网页走完设置，再邀请同事。
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/evanl666/keel/main/deploy/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/evanl666/keel/main/deploy/.env.example -o .env
+docker run --rm ghcr.io/evanl666/keel:0.2 secret     # 填进 .env 的 KEEL_SECRET_KEY，并设 POSTGRES_PASSWORD
+docker compose --env-file .env up -d                 # 数据库自动创建、自动迁移
+docker compose logs keel | grep "setup code"         # 设置页要这个码，防止陌生人抢先占用
+```
+
+Kubernetes 用 Helm：`helm install keel oci://ghcr.io/evanl666/charts/keel --version 0.2.0 ...`，
+可接已有 Postgres、OIDC SSO、Ingress、夜间备份 CronJob。打开网址后，设置向导依次引导：
+**管理员 → 模型 → Slack → GitHub → 策略 → 第一个团队**；每一步先测试连接再保存，失败时用一句话说明原因。
+然后在 **People → Invite** 邀请同事（邀请链接 7 天有效、一次性、可撤回），或用 SSO 按 IdP 组自动加入团队。
+
+- Slack：频道写 `#名字` 即可自动绑定；可私信管家（按邮箱匹配身份、按本人权限回答）；`/keel ask` 私下回答并附来源链接。
+- GitHub：没有公网地址也能用（每 2 分钟轮询）；有公网地址可配 webhook。
+- 知识库：可手动写、编辑、标记已复核；也可同步网页或 GitHub 里的 Markdown 文件夹（每天自动同步，删了的文件自动下线）；中文可检索。
+- 运维：`keel backup` / `keel restore`、`/metrics`、审计导出与保留期、升级与回滚文档。
+
+详细指南：[安装](docs/install.md) · [Slack](docs/slack.md) · [GitHub](docs/github.md) ·
+[人员与 SSO](docs/sso.md) · [知识库](docs/knowledge.md) · [备份](docs/backup.md) · [升级](docs/upgrade.md) ·
+[运维](docs/operations.md) · [CHANGELOG](CHANGELOG.md)。配置即代码用 `keel apply -f keel.yaml`；内网 runbook 用 `keel runner`
 （只执行它本地白名单里的命令，服务器只发 runbook id，从不下发命令）。
 
 ### 一分钟能玩的三件事
@@ -359,9 +409,9 @@ keel checkup vercel/next.js     # 给真实仓库做体检，只读
 - outbox 保证的是意图不丢，不是恰好一次；发消息、执行命令、模型调用、token 消耗都没有通用的恰好一次。
 - 403 只表示“没有权限”，不代表凭证过期；只有 401 或平台明确的 token 错误才提示重新连接。
 
-### v0.1 暂不包含
+### v0.2 暂不包含
 
 云托管、Microsoft Teams、Postgres 行级安全（目前在应用层隔离，每个安装一个组织）、向量检索（目前 BM25）、
-单实例多组织界面。
+单实例多组织界面、发邮件（邀请链接需手动发送）、SCIM、需要登录的知识源（Confluence、Notion、Google Docs）。
 
 许可证：Apache-2.0。

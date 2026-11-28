@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, Copy, Download, ExternalLink, GitBranch, Handshake, Loader2 } from "lucide-react";
+import { AlarmClock, ArrowRight, CheckCircle2, Copy, Download, ExternalLink, GitBranch, Loader2, MoonStar } from "lucide-react";
 import { errorLine } from "../api/client";
 import { useMe, usePromiseScan } from "../api/hooks";
 import type { FoundPromise, PromiseReport, PromiseStatus } from "../api/types";
-import { Button, Card, CardHeader, ErrorLine, Input, Segmented, Select } from "../components/ui";
+import { Badge, Button, Card, CardHeader, ErrorLine, Input, PageHeader, Segmented, Select } from "../components/ui";
 import { useToast } from "../components/toast";
 import { copyText, downloadText, fileSlug, svgDataUrl } from "../lib/share";
 import { cn } from "../lib/utils";
 
-export const PROMISE_STATUS: Record<PromiseStatus, { label: string; color: string; line: string }> = {
-  overdue: { label: "overdue", color: "var(--t-red)", line: "Still open past the date they gave." },
-  quiet: { label: "gone quiet", color: "var(--t-amber)", line: "No date, no close, two weeks on." },
-  open: { label: "open", color: "var(--t-blue)", line: "Still open, not late yet." },
-  follow_up: { label: "follow-up", color: "var(--t-violet)", line: "Pushed to a later PR. Not counted." },
-  dropped: { label: "dropped", color: "var(--t-gray)", line: "Closed as not planned." },
-  kept: { label: "kept", color: "var(--t-green2)", line: "Closed as done after the promise." },
+export const PROMISE_STATUS: Record<PromiseStatus, { label: string; color: string; tone: "ok" | "warn" | "bad" | "accent" | "neutral"; line: string }> = {
+  overdue: { label: "overdue", color: "var(--bad)", tone: "bad", line: "Still open past the date they gave." },
+  quiet: { label: "gone quiet", color: "var(--warn)", tone: "warn", line: "No date, no close, two weeks on." },
+  open: { label: "open", color: "var(--accent)", tone: "accent", line: "Still open, not late yet." },
+  follow_up: { label: "follow-up", color: "var(--muted)", tone: "neutral", line: "Pushed to a later PR. Not counted." },
+  dropped: { label: "dropped", color: "var(--faint)", tone: "neutral", line: "Closed as not planned." },
+  kept: { label: "kept", color: "var(--ok)", tone: "ok", line: "Closed as done after the promise." },
 };
 const ORDER: PromiseStatus[] = ["overdue", "quiet", "open", "follow_up", "dropped", "kept"];
 const DAYS = [7, 30, 90];
@@ -25,11 +25,9 @@ const STEPS = ["Reading issue and PR comments", "Picking out the promises", "Che
 
 export function rateColor(rate: number | null) {
   if (rate === null) return "var(--faint)";
-  if (rate >= 0.9) return "var(--t-green2)";
-  if (rate >= 0.75) return "var(--t-green)";
-  if (rate >= 0.6) return "var(--t-amber)";
-  if (rate >= 0.4) return "var(--t-orange)";
-  return "var(--t-red)";
+  if (rate >= 0.75) return "var(--ok)";
+  if (rate >= 0.4) return "var(--warn)";
+  return "var(--bad)";
 }
 
 function verdict(rate: number | null) {
@@ -64,13 +62,9 @@ function normalize(v: string) {
 export function StatusPill({ status, className }: { status: PromiseStatus; className?: string }) {
   const m = PROMISE_STATUS[status];
   return (
-    <span
-      className={cn("inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[12px] font-medium border whitespace-nowrap", className)}
-      style={{ color: m.color, borderColor: `color-mix(in srgb, ${m.color} 30%, transparent)`, background: `color-mix(in srgb, ${m.color} 10%, transparent)` }}
-    >
-      <span className="size-1.5 rounded-full" style={{ background: m.color }} />
+    <Badge tone={m.tone} className={cn("whitespace-nowrap", className)}>
       {m.label}
-    </span>
+    </Badge>
   );
 }
 
@@ -83,24 +77,24 @@ function Running({ repo, startedAt }: { repo: string; startedAt: number }) {
   const step = Math.min(STEPS.length - 1, Math.floor(t / 4500));
   const secs = Math.floor(t / 1000);
   return (
-    <Card className="p-5 sm:p-7 overflow-hidden" glow="rgba(123,136,255,0.10)">
-      <div className="text-[13px] text-faint font-mono flex items-center gap-1.5 min-w-0">
+    <Card className="p-5 sm:p-6 overflow-hidden">
+      <div className="text-[12px] text-muted font-mono flex items-center gap-1.5 min-w-0">
         <GitBranch className="size-3.5 shrink-0" />
         <span className="truncate">{repo}</span>
       </div>
-      <div className="mt-2 flex items-center gap-2.5 text-[15px] sm:text-[16px] font-medium min-h-7" role="status" aria-live="polite">
-        <Loader2 className="size-4 animate-spin text-accent shrink-0" />
+      <div className="mt-2 flex items-center gap-2.5 text-[16px] font-medium min-h-7" role="status" aria-live="polite">
+        <Loader2 className="size-4 animate-spin text-muted shrink-0" />
         <AnimatePresence mode="wait" initial={false}>
-          <motion.span key={step} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.25 }}>
+          <motion.span key={step} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }}>
             {STEPS[step]}…
           </motion.span>
         </AnimatePresence>
-        <span className="ml-auto text-[12.5px] text-faint tabular font-normal">{secs}s</span>
+        <span className="ml-auto text-[12px] text-muted tabular font-normal">{secs}s</span>
       </div>
-      <div className="mt-4 h-1 rounded-full bg-sunken overflow-hidden">
-        <motion.div className="h-full rounded-full bg-accent/70" initial={{ width: "4%" }} animate={{ width: "92%" }} transition={{ duration: 35, ease: [0.1, 0.6, 0.3, 1] }} />
+      <div className="mt-4 h-1 rounded-full bg-hover overflow-hidden">
+        <motion.div className="h-full rounded-full bg-fg/70" initial={{ width: "4%" }} animate={{ width: "92%" }} transition={{ duration: 35, ease: [0.1, 0.6, 0.3, 1] }} />
       </div>
-      <div className="mt-3 text-[12.5px] text-faint">This can take half a minute when a model reads the comments. Nothing is written to the repo.</div>
+      <div className="mt-3 text-[12px] text-muted">This can take half a minute when a model reads the comments. Nothing is written to the repo.</div>
     </Card>
   );
 }
@@ -114,26 +108,26 @@ function PromiseRow({ p, i }: { p: FoundPromise; i: number }) {
   ].filter(Boolean);
   return (
     <motion.div
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: Math.min(i, 12) * 0.035 }}
-      className="group flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-3 px-4 py-3 border-t border-line first:border-t-0 hover:bg-hover/60 transition-colors"
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(i, 12) * 0.025, duration: 0.15 }}
+      className="group flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-3 px-4 py-3 border-t border-line first:border-t-0 hover:bg-hover transition-colors"
     >
       <div className="sm:w-[104px] shrink-0 sm:pt-px">
         <StatusPill status={p.status} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 min-w-0">
-          <span className="text-[13.5px] font-medium min-w-0 break-words">{p.what}</span>
-          <span className="text-[12px] text-faint font-mono shrink-0">
+          <span className="text-[14px] font-medium min-w-0 break-words">{p.what}</span>
+          <span className="text-[12px] text-muted font-mono shrink-0">
             {p.is_pr ? "PR #" : "#"}
             {p.number}
           </span>
         </div>
-        <div className="text-[13px] text-muted italic mt-0.5 leading-snug break-words">“{p.quote}”</div>
-        <div className="text-[12px] text-faint mt-1">{meta.join(" · ")}</div>
+        <div className="text-[14px] text-soft mt-0.5 leading-snug break-words">“{p.quote}”</div>
+        <div className="text-[12px] text-muted mt-1">{meta.join(" · ")}</div>
       </div>
-      <a href={p.url} target="_blank" rel="noreferrer" className="shrink-0 sm:mt-0.5 inline-flex items-center gap-1 text-[12px] text-faint hover:text-accent group-hover:text-accent max-sm:h-8 self-start">
+      <a href={p.url} target="_blank" rel="noreferrer" className="shrink-0 sm:mt-0.5 inline-flex items-center gap-1 text-[12px] text-muted hover:text-fg max-sm:h-8 self-start">
         Comment <ExternalLink className="size-3" />
       </a>
     </motion.div>
@@ -147,26 +141,26 @@ function Highlights({ r }: { r: PromiseReport }) {
     <div className="grid grid-cols-1 md:grid-cols-3 border-b border-line">
       {old && (
         <div className="min-w-0 px-4 sm:px-6 py-4 border-line max-md:border-b md:border-r">
-          <div className="text-[11px] uppercase tracking-[0.06em] text-faint">Oldest unkept</div>
-          <a href={old.url} target="_blank" rel="noreferrer" className="block mt-1.5 text-[14px] italic leading-snug hover:text-accent break-words">“{old.quote}”</a>
-          <div className="text-[12px] text-faint mt-1">@{old.who} · {Math.round(old.age_days)} days, no update</div>
+          <div className="text-[12px] text-muted">Oldest unkept</div>
+          <a href={old.url} target="_blank" rel="noreferrer" className="block mt-1.5 text-[14px] leading-snug hover:underline break-words">“{old.quote}”</a>
+          <div className="text-[12px] text-muted mt-1">@{old.who} · {Math.round(old.age_days)} days, no update</div>
         </div>
       )}
       {fast && (
         <div className="min-w-0 px-4 sm:px-6 py-4 border-line max-md:border-b md:border-r">
-          <div className="text-[11px] uppercase tracking-[0.06em] text-faint">Fastest kept</div>
-          <a href={fast.url} target="_blank" rel="noreferrer" className="block mt-1.5 text-[14px] font-medium leading-snug hover:text-accent break-words">{fast.what}</a>
-          <div className="text-[12px] text-faint mt-1">@{fast.who} · done in {took(fast.days_to_keep ?? 0)}</div>
+          <div className="text-[12px] text-muted">Fastest kept</div>
+          <a href={fast.url} target="_blank" rel="noreferrer" className="block mt-1.5 text-[14px] font-medium leading-snug hover:underline break-words">{fast.what}</a>
+          <div className="text-[12px] text-muted mt-1">@{fast.who} · done in {took(fast.days_to_keep ?? 0)}</div>
         </div>
       )}
       {top.length > 0 && (
         <div className="min-w-0 px-4 sm:px-6 py-4">
-          <div className="text-[11px] uppercase tracking-[0.06em] text-faint">Most promises</div>
+          <div className="text-[12px] text-muted">Most promises</div>
           <div className="mt-1.5 space-y-1">
             {top.map((x) => (
-              <div key={x.who} className="flex items-center gap-2 text-[13px]">
+              <div key={x.who} className="flex items-center gap-2 text-[14px]">
                 <span className="font-medium truncate">@{x.who}</span>
-                <span className="ml-auto text-faint tabular whitespace-nowrap">
+                <span className="ml-auto text-muted tabular whitespace-nowrap">
                   {x.kept} of {x.made} kept
                 </span>
               </div>
@@ -195,42 +189,33 @@ function Report({ r }: { r: PromiseReport }) {
   ];
   return (
     <Card className="overflow-hidden">
-      <div
-        className="relative px-5 py-6 sm:px-8 sm:py-7 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-8 border-b border-line"
-        style={{ backgroundImage: `radial-gradient(70% 140% at 0% 0%, color-mix(in srgb, ${color} 16%, transparent), transparent 60%)` }}
-      >
-        <div className="shrink-0 sm:min-w-[168px]">
-          <motion.div
-            initial={{ scale: 0.7, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 240, damping: 16, delay: 0.1 }}
-            className="text-[64px] sm:text-[76px] leading-[0.9] font-bold tracking-[-0.05em] tabular origin-left"
-            style={{ color }}
-          >
+      <div className="px-5 py-5 sm:px-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 border-b border-line">
+        <div className="shrink-0 sm:min-w-[136px]">
+          <div className="text-[44px] leading-none font-semibold tracking-[-0.035em] tabular" style={{ color }}>
             {rate === null ? "n/a" : `${Math.round(rate * 100)}%`}
-          </motion.div>
-          <div className="text-[13px] text-muted mt-2">{rate === null ? `${st.judged} judged so far` : "of promises kept"}</div>
+          </div>
+          <div className="text-[12px] text-muted mt-1.5">{rate === null ? `${st.judged} judged so far` : "of promises kept"}</div>
         </div>
         <div className="min-w-0 flex-1">
-          <a href={`https://github.com/${r.repo}`} target="_blank" rel="noreferrer" className="text-[13px] text-faint font-mono inline-flex items-center gap-1.5 hover:text-fg max-w-full">
+          <a href={`https://github.com/${r.repo}`} target="_blank" rel="noreferrer" className="text-[12px] text-muted font-mono inline-flex items-center gap-1.5 hover:text-fg max-w-full">
             <GitBranch className="size-3.5 shrink-0" />
             <span className="truncate">{r.repo}</span>
             <ExternalLink className="size-3 shrink-0" />
           </a>
-          <div className="text-[20px] sm:text-[22px] font-semibold tracking-[-0.02em] mt-1 leading-tight">{verdict(rate)}</div>
-          <div className="mt-2 text-[13px] text-muted">
+          <div className="text-[16px] font-semibold tracking-[-0.01em] mt-1 leading-snug">{verdict(rate)}</div>
+          <div className="mt-1 text-[14px] text-muted">
             {st.promises} {st.promises === 1 ? "promise" : "promises"} in {r.scanned_comments} comments · last {r.days} days · {r.used_model ? "read by your model" : "matched by phrasing rules"}
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 border-b border-line">
-        {stats.map(([k, v, c], i) => (
-          <motion.div key={k} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }} className="min-w-0 px-4 sm:px-5 py-4 border-r border-t border-line -mt-px">
-            <div className="text-[11px] uppercase tracking-[0.06em] text-faint whitespace-nowrap truncate">{k}</div>
-            <div className="text-[20px] font-semibold tabular tracking-[-0.02em] mt-1" style={c ? { color: c } : undefined}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-px bg-line border-b border-line">
+        {stats.map(([k, v, c]) => (
+          <div key={k} className="min-w-0 px-4 sm:px-5 py-4 bg-panel">
+            <div className="text-[12px] text-muted whitespace-nowrap truncate">{k}</div>
+            <div className="text-[20px] font-semibold tabular tracking-[-0.01em] mt-0.5" style={c ? { color: c } : undefined}>
               {v}
             </div>
-          </motion.div>
+          </div>
         ))}
       </div>
       <Highlights r={r} />
@@ -238,7 +223,7 @@ function Report({ r }: { r: PromiseReport }) {
         {r.promises.length ? (
           <>
             <div className="mb-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-              <span className="text-[13px] font-semibold">Every promise</span>
+              <span className="text-[14px] font-semibold">Every promise</span>
               <div className="sm:ml-auto min-w-0">
                 <Segmented
                   size="sm"
@@ -260,7 +245,7 @@ function Report({ r }: { r: PromiseReport }) {
                 />
               </div>
             </div>
-            {filter !== "all" && <div className="text-[12.5px] text-faint mb-2.5">{PROMISE_STATUS[filter].line}</div>}
+            {filter !== "all" && <div className="text-[12px] text-muted mb-2.5">{PROMISE_STATUS[filter].line}</div>}
             <div className="rounded-xl border border-line overflow-hidden">
               {shown.map((p, i) => (
                 <PromiseRow key={p.url + p.said_at} p={p} i={i} />
@@ -269,12 +254,11 @@ function Report({ r }: { r: PromiseReport }) {
           </>
         ) : (
           <div className="py-8 text-center">
-            <div className="text-[28px]">🔍</div>
-            <div className="text-[14px] font-semibold mt-2">No promises found</div>
-            <div className="text-[13px] text-muted mt-1">Nobody said “I'll fix it” in the last {r.days} days. Try a longer window.</div>
+            <div className="text-[14px] font-semibold">No promises found</div>
+            <div className="text-[14px] text-muted mt-1">Nobody said “I'll fix it” in the last {r.days} days. Try a longer window.</div>
           </div>
         )}
-        <div className="mt-4 text-[12px] text-faint">
+        <div className="mt-4 text-[12px] text-muted">
           Kept means the issue or PR closed as done after the promise. Follow-ups aren't counted.
           {r.not_checked.length > 0 && <> Not checked: {r.not_checked.join("; ")}.</>}
         </div>
@@ -301,9 +285,9 @@ function Share({ r }: { r: PromiseReport }) {
     <Card className="mt-4 overflow-hidden">
       <CardHeader title="Share it" sub="A badge for the README, a card for Slack or a post, and a summary for an issue." />
       <div className="px-4 sm:px-5 pb-5 grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-4 lg:gap-6 items-start">
-        <img src={svgDataUrl(r.card_svg)} alt={`Share card: ${r.repo} kept ${r.stats.kept_rate === null ? "n/a" : `${Math.round(r.stats.kept_rate * 100)}%`} of promises`} className="w-full h-auto rounded-lg border border-line shadow-soft" />
+        <img src={svgDataUrl(r.card_svg)} alt={`Share card: ${r.repo} kept ${r.stats.kept_rate === null ? "n/a" : `${Math.round(r.stats.kept_rate * 100)}%`} of promises`} className="w-full h-auto rounded-lg border border-line" />
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-[0.06em] text-faint">README badge</div>
+          <div className="text-[12px] text-muted">README badge</div>
           <img src={svgDataUrl(r.badge_svg)} alt="promises kept badge" className="mt-2 h-5 w-auto" />
           <div className="mt-4 flex flex-col gap-2">
             <Button variant="primary" icon={<Download className="size-3.5" />} onClick={() => downloadText(`${base}-promises-card.svg`, r.card_svg)}>
@@ -319,7 +303,7 @@ function Share({ r }: { r: PromiseReport }) {
               Copy Markdown summary
             </Button>
           </div>
-          <div className="mt-3 text-[12px] text-faint leading-snug">
+          <div className="mt-3 text-[12px] text-muted leading-snug">
             Save the badge as <code className="font-mono">{BADGE_PATH}</code> in the repo, then paste the badge Markdown into the README. The promise-check Action can keep it fresh every week.
           </div>
           {r.private && (
@@ -367,13 +351,11 @@ export function Promises() {
 
   return (
     <div>
-      <Card className="overflow-hidden mb-6" glow="rgba(123,136,255,0.14)">
-        <div className="px-5 pt-6 pb-6 sm:px-8 sm:pt-8 sm:pb-7">
-          <div className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full border border-accent/30 bg-accent-soft text-accent text-[11.5px] font-medium">
-            <Handshake className="size-3.5" /> Promise check
-          </div>
-          <h1 className="mt-3 text-[24px] sm:text-[28px] font-semibold tracking-[-0.03em] leading-tight">“I'll send a PR by Friday.” Did they?</h1>
-          <p className="mt-1.5 text-[14px] text-muted max-w-xl">Keel reads a repo's issue and PR comments, finds the promises people made, and checks which ones landed. Public repos need no token. Read-only.</p>
+      <PageHeader title="Promises" sub="Who said they'd do it, and whether they did. Read-only." />
+      <Card className="mb-6">
+        <div className="p-5 sm:p-6">
+          <h2 className="text-[16px] font-semibold tracking-[-0.01em]">“I'll send a PR by Friday.” Did they?</h2>
+          <p className="mt-1 text-[14px] text-muted max-w-xl">Keel reads a repo's issue and PR comments, finds the promises people made, and checks which ones landed. Public repos need no token. Read-only.</p>
           <form
             className="mt-5 flex flex-col sm:flex-row sm:items-center gap-2 max-w-2xl"
             onSubmit={(e) => {
@@ -382,23 +364,23 @@ export function Promises() {
             }}
           >
             <div className="relative flex-1 min-w-0">
-              <GitBranch className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-faint" />
-              <Input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/name" className="h-11 max-sm:h-11 pl-9 text-[14.5px] font-mono" aria-label="GitHub repository" />
+              <GitBranch className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted" />
+              <Input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/name" className="h-9 max-sm:h-11 pl-9 text-[14px] font-mono" aria-label="GitHub repository" />
             </div>
-            <Select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="How far back" className="h-11 max-sm:h-11 sm:w-[140px]">
+            <Select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="How far back" className="h-9 max-sm:h-11 sm:w-[140px]">
               {DAYS.map((d) => (
                 <option key={d} value={d}>
                   Last {d} days
                 </option>
               ))}
             </Select>
-            <Button type="submit" variant="primary" size="lg" className="h-11" loading={scan.isFetching} icon={!scan.isFetching ? <ArrowRight className="size-4" /> : undefined}>
+            <Button type="submit" variant="primary" size="lg" loading={scan.isFetching} icon={!scan.isFetching ? <ArrowRight className="size-4" /> : undefined}>
               Check promises
             </Button>
           </form>
           {error && <ErrorLine error={error} className="mt-3 max-w-2xl" />}
-          <div className="mt-5 flex items-center gap-2 flex-wrap text-[12.5px]">
-            <span className="text-faint">Try</span>
+          <div className="mt-5 flex items-center gap-2 flex-wrap text-[12px]">
+            <span className="text-muted">Try</span>
             {examples.map((x) => (
               <button
                 key={x}
@@ -406,8 +388,8 @@ export function Promises() {
                 disabled={scan.isFetching}
                 onClick={() => run(x)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 h-7 max-sm:h-10 max-sm:px-3 px-2.5 rounded-lg border font-mono text-[12px] cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-default",
-                  x === repoParam ? "border-accent/50 bg-accent-soft text-fg" : "border-line bg-panel text-muted hover:text-fg hover:border-line-strong",
+                  "inline-flex items-center gap-1.5 h-7 max-sm:h-10 max-sm:px-3 px-2.5 rounded-md bg-hover font-mono text-[12px] cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-default",
+                  x === repoParam ? "text-fg ring-1 ring-fg/30" : "text-soft hover:text-fg",
                 )}
               >
                 {x}
@@ -423,21 +405,21 @@ export function Promises() {
             <Running repo={repoParam} startedAt={startedAt} />
           </motion.div>
         ) : scan.data ? (
-          <motion.div key={`r-${scan.data.repo}-${scan.dataUpdatedAt}`} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
+          <motion.div key={`r-${scan.data.repo}-${scan.dataUpdatedAt}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
             <Report r={scan.data} />
             <Share r={scan.data} />
           </motion.div>
         ) : (
-          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
-              { e: "✅", t: "Kept", l: "The issue or PR closed as done after someone said they'd do it." },
-              { e: "⏰", t: "Overdue", l: "They named a day. The day came and went." },
-              { e: "🦗", t: "Gone quiet", l: "No date, no close, and two weeks of silence." },
+              { e: <CheckCircle2 className="size-4 text-ok" />, t: "Kept", l: "The issue or PR closed as done after someone said they'd do it." },
+              { e: <AlarmClock className="size-4 text-bad" />, t: "Overdue", l: "They named a day. The day came and went." },
+              { e: <MoonStar className="size-4 text-warn" />, t: "Gone quiet", l: "No date, no close, and two weeks of silence." },
             ].map((x) => (
               <Card key={x.t} className="p-5">
-                <div className="text-[22px]">{x.e}</div>
-                <div className="text-[14px] font-semibold mt-2">{x.t}</div>
-                <div className="text-[13px] text-muted mt-1">{x.l}</div>
+                <span className="grid place-items-center size-8 rounded-lg bg-hover">{x.e}</span>
+                <div className="text-[14px] font-semibold mt-3">{x.t}</div>
+                <div className="text-[14px] text-muted mt-1">{x.l}</div>
               </Card>
             ))}
           </motion.div>

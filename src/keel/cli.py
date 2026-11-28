@@ -115,12 +115,24 @@ def worker() -> None:
     )
     if config.get().auto_migrate:
         db.migrate()
+    from keel import metrics
+
+    metrics.serve_worker_metrics(config.get().worker_metrics_port)
     w = worker_mod.Worker()
     console.print(f"⚓ worker [bold]{w.id}[/] polling the queue")
     try:
         w.run_forever()
     except KeyboardInterrupt:
         w.stop()
+
+
+@app.command("setup-code")
+def setup_code() -> None:
+    """Print the code the setup page asks for before it creates the first admin."""
+    from keel import auth_utils, config
+
+    config.get().effective_secret_key()
+    console.print(auth_utils.setup_code())
 
 
 @app.command()
@@ -455,52 +467,158 @@ def _run_allowed(allowed: dict[str, str], op: dict[str, typing.Any]) -> tuple[bo
 
 
 @app.command()
-def backup(out: pathlib.Path = typer.Option(None, "-o", help="Output file.")) -> None:
+def backup(
+    out: str = typer.Option(
+        None, "-o", help="Output file, or - for stdout. Default: KEEL_BACKUP_DIR/keel-<time>."
+    ),
+) -> None:
     """Back up the database (pg_dump custom format, or a SQLite copy)."""
     from keel import config
 
-    url = config.get().database_url
+    cfg = config.get()
+    url = cfg.database_url
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    to_stdout = out == "-"
     if url.startswith("sqlite"):
-        out = out or pathlib.Path(f"keel-{stamp}.db")
+        if to_stdout:
+            notes.print("[red]✗[/] SQLite backups go to a file. Use -o keel.db.")
+            raise typer.Exit(1)
+        path = pathlib.Path(out) if out else pathlib.Path(cfg.backup_dir) / f"keel-{stamp}.db"
+        path.parent.mkdir(parents=True, exist_ok=True)
         src = sqlite3.connect(url.split("///", 1)[1])
-        with sqlite3.connect(out) as dst:
+        with sqlite3.connect(path) as dst:
             src.backup(dst)
         src.close()
     else:
-        if not shutil.which("pg_dump"):
-            console.print("[red]✗[/] pg_dump isn't installed. Install the PostgreSQL client tools.")
-            raise typer.Exit(1)
-        out = out or pathlib.Path(f"keel-{stamp}.dump")
-        subprocess.run(
-            ["pg_dump", "--format=custom", "--no-owner", "--file", str(out), _libpq(url)], check=True
+        _need_tool("pg_dump")
+        path = (
+            None
+            if to_stdout
+            else (pathlib.Path(out) if out else pathlib.Path(cfg.backup_dir) / f"keel-{stamp}.dump")
         )
-    console.print(f"[green]✓[/] Backed up to {out} ({out.stat().st_size // 1024} KB).")
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        args = ["pg_dump", "--format=custom", "--no-owner"] + (["--file", str(path)] if path else [])
+        proc = subprocess.run(
+            args,
+            check=False,
+            env=_pg_env(url),
+            stdout=None if path else sys.stdout.buffer,
+            stderr=subprocess.PIPE,
+        )
+        if proc.returncode:
+            _pg_failed("pg_dump", proc.stderr)
+    if path is not None:
+        notes.print(f"[green]✓[/] Backed up to {path} ({path.stat().st_size // 1024} KB).")
 
 
 @app.command()
 def restore(
-    file: pathlib.Path = typer.Argument(..., exists=True),
+    file: str = typer.Argument(..., help="A file from `keel backup`, or - to read it from stdin."),
     yes: bool = typer.Option(False, "--yes", help="Don't ask."),
 ) -> None:
-    """Restore a backup made with ``keel backup``. Replaces current data."""
-    from keel import config
+    """Restore a backup made with ``keel backup``. Replaces current data, then upgrades the schema if needed.
+
+    Works across PostgreSQL client and server versions (e.g. a pg_restore 17 client against a 16 server).
+    """
+    from keel import config, db
 
     url = config.get().database_url
+    if file != "-" and not pathlib.Path(file).is_file():
+        notes.print(f"[red]✗[/] No backup at {file}.")
+        raise typer.Exit(1)
     if not yes:
-        typer.confirm(f"Replace all data in {url.split('@')[-1]} with {file}?", abort=True)
+        if file == "-":
+            notes.print("[red]✗[/] Reading from stdin needs --yes.")
+            raise typer.Exit(1)
+        typer.confirm(f"Replace all data in {_where(url)} with {file}?", abort=True)
     if url.startswith("sqlite"):
+        if file == "-":
+            notes.print("[red]✗[/] SQLite restores come from a file.")
+            raise typer.Exit(1)
         shutil.copyfile(file, url.split("///", 1)[1])
     else:
-        subprocess.run(
-            ["pg_restore", "--clean", "--if-exists", "--no-owner", "--dbname", _libpq(url), str(file)],
-            check=True,
+        _need_tool("pg_restore")
+        _need_tool("psql")
+        env = _pg_env(url)
+        # pg_restore writes SQL; psql runs it in one transaction. Settings a newer client emits that an older
+        # server doesn't know (SET transaction_timeout from 17 → 16) are dropped on the way.
+        dump = subprocess.Popen(
+            ["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges", "-f", "-"]
+            + ([] if file == "-" else [file]),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            stdin=sys.stdin.buffer if file == "-" else subprocess.DEVNULL,
         )
-    console.print("[green]✓[/] Restored.")
+        load = subprocess.Popen(
+            ["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "--single-transaction"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        assert dump.stdout is not None and load.stdin is not None
+        for line in dump.stdout:
+            if not line.startswith(UNPORTABLE_SETTINGS):
+                load.stdin.write(line)
+        load.stdin.close()
+        dump_err, load_err = (
+            dump.stderr.read() if dump.stderr else b"",
+            load.stderr.read() if load.stderr else b"",
+        )
+        if dump.wait():
+            _pg_failed("pg_restore", dump_err)
+        if load.wait():
+            _pg_failed("psql", load_err)
+    db.migrate()
+    notes.print(f"[green]✓[/] Restored. Schema at {db.current_revision()}.")
 
 
-def _libpq(url: str) -> str:
-    return url.replace("postgresql+psycopg://", "postgresql://")
+UNPORTABLE_SETTINGS = (b"SET transaction_timeout",)
+
+
+def _need_tool(name: str) -> None:
+    if not shutil.which(name):
+        notes.print(
+            f"[red]✗[/] {name} isn't installed. Install the PostgreSQL client tools (e.g. postgresql-client)."
+        )
+        raise typer.Exit(1)
+
+
+def _pg_env(url: str) -> dict[str, str]:
+    """libpq settings for the URL, passed through the environment so the password never shows in ps or errors."""
+    import sqlalchemy as sa
+
+    u = sa.engine.make_url(url)
+    env = {**os.environ, "PGDATABASE": u.database or "", "PGHOST": u.host or "localhost"}
+    if u.port:
+        env["PGPORT"] = str(u.port)
+    if u.username:
+        env["PGUSER"] = u.username
+    if u.password:
+        env["PGPASSWORD"] = u.password
+    sslmode = u.query.get("sslmode")
+    if sslmode:
+        env["PGSSLMODE"] = sslmode if isinstance(sslmode, str) else sslmode[0]
+    return env
+
+
+def _where(url: str) -> str:
+    """host/db, never credentials."""
+    import sqlalchemy as sa
+
+    if url.startswith("sqlite"):
+        return url.split("///", 1)[1]
+    u = sa.engine.make_url(url)
+    return f"{u.host}/{u.database}"
+
+
+def _pg_failed(tool: str, stderr: bytes) -> typing.NoReturn:
+    lines = [ln for ln in stderr.decode(errors="replace").splitlines() if ln.strip()]
+    first_error = next((ln for ln in lines if "error" in ln.lower()), lines[-1] if lines else "no output")
+    notes.print(f"[red]✗[/] {tool} failed: {rich.markup.escape(first_error.strip())}")
+    raise typer.Exit(1)
 
 
 @app.command()

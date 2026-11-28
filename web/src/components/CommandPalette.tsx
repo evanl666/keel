@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { X, Search, LayoutGrid, Inbox, ListChecks, Send, Activity, Stethoscope, Handshake, Gift, ScrollText, Settings, Sun, Sparkles, Play, CornerDownLeft, Pause } from "lucide-react";
+import { X, Search, LayoutGrid, Inbox, ListChecks, Send, Activity, Stethoscope, Handshake, Gift, ScrollText, Settings, Users, Sun, Sparkles, Play, CornerDownLeft, Pause } from "lucide-react";
 import { api, errorLine } from "../api/client";
 import { useCommitments, useMe, useTeams } from "../api/hooks";
 import { toggleTheme } from "../lib/theme";
@@ -49,8 +49,9 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       { id: "p-s", group: "Pages", label: "Services", hint: "G S", keywords: "health incidents runbooks", icon: <Activity />, run: go("/services") },
       { id: "p-c", group: "Pages", label: "Team checkup", hint: "G C", keywords: "repo grade report", icon: <Stethoscope />, run: go("/checkup") },
       { id: "p-pr", group: "Pages", label: "Promise check", keywords: "promises kept github repo comments badge archaeology", icon: <Handshake />, run: go("/promises") },
+      ...(me?.user?.role === "org_admin" ? [{ id: "p-people", group: "Pages", label: "People", keywords: "users invite members roles", icon: <Users />, run: go("/people") }] : []),
       { id: "p-u", group: "Pages", label: "Audit log", keywords: "history who", icon: <ScrollText />, run: go("/audit") },
-      { id: "p-setup", group: "Pages", label: "Setup", keywords: "slack github model", icon: <Settings />, run: go("/setup") },
+      ...(me?.user?.role === "org_admin" ? [{ id: "p-setup", group: "Pages", label: "Setup", keywords: "slack github model", icon: <Settings />, run: go("/setup") }] : []),
     ];
     const teamItems: Item[] = teams.map((t) => ({
       id: `t-${t.slug}`,
@@ -58,7 +59,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       label: `${t.name}`,
       hint: `${t.steward.name} · L${t.steward.level}`,
       keywords: `${t.steward.name} team`,
-      icon: <span className="text-[15px] leading-none">{t.steward.emoji}</span>,
+      icon: <span className="text-[16px] leading-none">{t.steward.emoji}</span>,
       run: go(`/teams/${t.slug}`),
     }));
     const actions: Item[] = [
@@ -131,7 +132,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       run: go(`/commitments/${c.key}`),
     }));
     return [...pages, ...teamItems, ...actions, ...cms];
-  }, [teams, commitments, me?.demo, nav, qc, toast]);
+  }, [teams, commitments, me?.demo, me?.user?.role, nav, qc, toast]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -179,24 +180,24 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     <AnimatePresence>
       {open && (
         <motion.div className="fixed inset-0 z-[90] flex items-start justify-center pt-3 px-3 sm:pt-[12vh] sm:px-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+          <div className="absolute inset-0 bg-black/30 dark:bg-black/55" onClick={onClose} />
           <motion.div
             initial={{ opacity: 0, scale: 0.97, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: -4 }}
             transition={{ type: "spring", stiffness: 500, damping: 36 }}
-            className="relative w-full max-w-[620px] overflow-hidden rounded-2xl border border-line-strong bg-panel/95 backdrop-blur-2xl shadow-pop"
+            className="relative w-full max-w-[620px] overflow-hidden rounded-xl border border-line bg-panel shadow-pop"
             role="dialog"
             aria-label="Command palette"
           >
             <div className="flex items-center gap-3 px-4 h-[52px] border-b border-line">
-              <Search className="size-4 text-faint" />
+              <Search className="size-4 text-muted" />
               <input
                 autoFocus
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Jump to a team, a commitment like C-88, or an action…"
-                className="min-w-0 flex-1 bg-transparent outline-none text-[14.5px] max-sm:text-[16px] placeholder:text-faint"
+                className="min-w-0 flex-1 bg-transparent outline-none text-[14px] max-sm:text-[16px] placeholder:text-muted"
                 onKeyDown={(e) => {
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
@@ -211,15 +212,15 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                 }}
               />
               <Kbd className="touch:hidden">esc</Kbd>
-              <button onClick={onClose} className="hidden touch:block -mr-2 h-10 px-2 rounded-lg text-[13px] font-medium text-muted hover:text-fg cursor-pointer">
+              <button onClick={onClose} className="hidden touch:block -mr-2 h-10 px-2 rounded-lg text-[14px] font-medium text-muted hover:text-fg cursor-pointer">
                 Cancel
               </button>
             </div>
             <div ref={listRef} className="max-h-[min(60dvh,calc(100dvh-8rem))] sm:max-h-[52vh] overflow-y-auto overscroll-contain p-2">
-              {grouped.flat.length === 0 && <div className="py-10 text-center text-[13px] text-faint">Nothing matches "{q}".</div>}
+              {grouped.flat.length === 0 && <div className="py-10 text-center text-[14px] text-muted">Nothing matches "{q}".</div>}
               {grouped.out.map(([g, list]) => (
                 <div key={g} className="mb-1">
-                  <div className="px-2.5 pt-2 pb-1 text-[11px] font-medium uppercase tracking-[0.07em] text-faint">{g}</div>
+                  <div className="px-2.5 pt-2 pb-1 text-[12px] font-medium text-muted">{g}</div>
                   {list.map((it) => {
                     n += 1;
                     const i = n;
@@ -232,18 +233,18 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                         onClick={() => run(it)}
                         className={cn("relative w-full flex items-center gap-3 h-10 px-2.5 rounded-lg text-left cursor-pointer", active ? "text-fg" : "text-muted")}
                       >
-                        {active && <motion.span layoutId="cmdk-active" className="absolute inset-0 rounded-lg bg-hover border border-line" transition={{ type: "spring", stiffness: 700, damping: 45 }} />}
-                        <span className="relative grid size-5 place-items-center text-faint [&>svg]:size-4">{it.icon}</span>
-                        <span className="relative flex-1 truncate text-[13.5px]">{it.label}</span>
-                        {it.hint && <span className="relative shrink-0 text-[12px] text-faint font-mono">{it.hint}</span>}
-                        {active && <CornerDownLeft className="relative shrink-0 size-3.5 text-faint touch:hidden" />}
+                        {active && <span className="absolute inset-0 rounded-lg bg-hover" />}
+                        <span className="relative grid size-5 place-items-center text-muted [&>svg]:size-4">{it.icon}</span>
+                        <span className="relative flex-1 truncate text-[14px]">{it.label}</span>
+                        {it.hint && <span className="relative shrink-0 text-[12px] text-muted font-mono">{it.hint}</span>}
+                        {active && <CornerDownLeft className="relative shrink-0 size-3.5 text-muted touch:hidden" />}
                       </button>
                     );
                   })}
                 </div>
               ))}
             </div>
-            <div className="flex items-center gap-4 px-4 h-9 border-t border-line text-[11.5px] text-faint touch:hidden">
+            <div className="flex items-center gap-4 px-4 h-9 border-t border-line text-[12px] text-muted touch:hidden">
               <span className="flex items-center gap-1.5"><Kbd>↑</Kbd><Kbd>↓</Kbd> move</span>
               <span className="flex items-center gap-1.5"><Kbd>↵</Kbd> open</span>
               <span className="ml-auto flex items-center gap-1.5"><Kbd>?</Kbd> all shortcuts</span>
@@ -282,23 +283,23 @@ export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () =>
     <AnimatePresence>
       {open && (
         <motion.div className="fixed inset-0 z-[90] grid place-items-center px-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+          <div className="absolute inset-0 bg-black/30 dark:bg-black/55" onClick={onClose} />
           <motion.div
             initial={{ scale: 0.96, y: 8 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.98, opacity: 0 }}
-            className="relative w-full max-w-[440px] max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-2xl border border-line-strong bg-panel shadow-pop p-5"
+            className="relative w-full max-w-[440px] max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-xl border border-line bg-panel shadow-pop p-5"
             role="dialog"
             aria-label="Keyboard shortcuts"
           >
-            <button onClick={onClose} aria-label="Close" className="hidden touch:grid absolute top-2.5 right-2.5 place-items-center size-10 rounded-lg text-faint hover:text-fg hover:bg-hover cursor-pointer">
+            <button onClick={onClose} aria-label="Close" className="hidden touch:grid absolute top-2.5 right-2.5 place-items-center size-10 rounded-lg text-muted hover:text-fg hover:bg-hover cursor-pointer">
               <X className="size-4" />
             </button>
-            <div className="text-[15px] font-semibold mb-1 touch:pr-10">Keyboard shortcuts</div>
-            <div className="text-[12.5px] text-faint mb-4">Keel works without a mouse. Press G, then a letter, to jump.</div>
+            <div className="text-[16px] font-semibold mb-1 touch:pr-10">Keyboard shortcuts</div>
+            <div className="text-[12px] text-muted mb-4">Keel works without a mouse. Press G, then a letter, to jump.</div>
             <div className="divide-y divide-line">
               {SHORTCUTS.map(([label, keys]) => (
-                <div key={label} className="flex items-center justify-between gap-3 py-2 text-[13px]">
+                <div key={label} className="flex items-center justify-between gap-3 py-2 text-[14px]">
                   <span className="text-muted">{label}</span>
                   <span className="flex shrink-0 items-center gap-1">
                     {keys.map((k, i) => (

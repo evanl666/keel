@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, MessageCircleQuestion, Sparkles } from "lucide-react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, BookOpen, Brain, Check, ChevronDown, Compass, MessageCircleQuestion, PenLine, Ruler, Sparkles } from "lucide-react";
 import { api, errorLine } from "../../api/client";
 import { qk, useLearning } from "../../api/hooks";
 import type { Gap, Label, LearningInfo, Lesson, LessonKind, TeamDetail } from "../../api/types";
@@ -9,12 +9,12 @@ import { Button, Card, CardHeader, EmptyState, ErrorLine, Input, Segmented, Sele
 import { LabelBadge } from "../../components/keel";
 import { useToast } from "../../components/toast";
 import { ago } from "../../lib/time";
-import { alpha, cn, plural } from "../../lib/utils";
+import { cn, plural } from "../../lib/utils";
 
-const KIND_META: Record<LessonKind, { icon: string; label: string }> = {
-  rule: { icon: "📏", label: "Rules" },
-  reply: { icon: "✍️", label: "Replies" },
-  triage: { icon: "🧭", label: "Triage" },
+const KIND_META: Record<LessonKind, { icon: ReactNode; label: string }> = {
+  rule: { icon: <Ruler className="size-4" />, label: "Rules" },
+  reply: { icon: <PenLine className="size-4" />, label: "Replies" },
+  triage: { icon: <Compass className="size-4" />, label: "Triage" },
 };
 
 /** Where the lesson came from, in a few words. */
@@ -29,9 +29,9 @@ type KF = "all" | LessonKind;
 const pct = (r: number | null) => (r == null ? "–" : `${Math.round(r * 100)}%`);
 
 function Trend({ now, before }: { now: number | null; before: number | null }) {
-  if (now == null || before == null) return <span className="text-faint">no earlier month to compare</span>;
+  if (now == null || before == null) return <span className="text-muted">no earlier month to compare</span>;
   const d = Math.round((now - before) * 100);
-  if (d === 0) return <span className="text-faint">same as the month before</span>;
+  if (d === 0) return <span className="text-muted">same as the month before</span>;
   const Up = d > 0 ? ArrowUpRight : ArrowDownRight;
   return (
     <span className={cn("inline-flex items-center gap-0.5 font-medium", d > 0 ? "text-ok" : "text-warn")}>
@@ -50,30 +50,25 @@ function Hero({ t, data }: { t: TeamDetail; data: LearningInfo }) {
     { label: "Sent without edits", value: pct(s.unedited_rate), line: <Trend now={s.unedited_rate} before={s.unedited_rate_before} /> },
   ];
   return (
-    <Card className="relative overflow-hidden mb-4 lg:mb-5" glow={alpha(t.color, 0.12)}>
+    <Card className="overflow-hidden mb-4 lg:mb-5">
       <div className="flex flex-wrap items-center gap-3 px-4 sm:px-5 pt-4 sm:pt-5">
-        <motion.span
-          className="grid place-items-center size-9 rounded-xl text-[19px] border border-line"
-          style={{ background: alpha(t.color, 0.14) }}
-          animate={s.learned_this_week ? { rotate: [0, -8, 8, 0], scale: [1, 1.08, 1] } : undefined}
-          transition={{ duration: 1.1, delay: 0.4 }}
-        >
-          🧠
-        </motion.span>
+        <span className="grid place-items-center size-8 rounded-lg bg-hover text-soft shrink-0">
+          <Brain className="size-4" />
+        </span>
         <div className="min-w-0">
-          <div className="text-[15px] font-semibold tracking-[-0.01em]">
+          <div className="text-[16px] font-semibold tracking-[-0.01em]">
             {s.learned_this_week ? `${t.steward.name} learned ${plural(s.learned_this_week, "thing")} this week` : `${t.steward.name} learns from your team`}
           </div>
-          <div className="text-[12.5px] text-muted">Edits, rejections with a reason, fixes to the ledger and answers in threads all teach it. You can switch any lesson off.</div>
+          <div className="text-[12px] text-muted">Edits, rejections with a reason, fixes to the ledger and answers in threads all teach it. You can switch any lesson off.</div>
         </div>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-px mt-4 border-t border-line bg-line">
-        {cells.map((c, i) => (
-          <motion.div key={c.label} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * i }} className="bg-panel px-4 sm:px-5 py-3.5 min-w-0">
-            <div className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-faint whitespace-nowrap">{c.label}</div>
-            <div className={cn("text-[24px] font-semibold tracking-[-0.02em] tabular mt-0.5", c.tone)}>{c.value}</div>
+        {cells.map((c) => (
+          <div key={c.label} className="bg-panel px-4 sm:px-5 py-3.5 min-w-0">
+            <div className="text-[12px] text-muted whitespace-nowrap">{c.label}</div>
+            <div className={cn("text-[20px] font-semibold tracking-[-0.01em] tabular mt-0.5", c.tone)}>{c.value}</div>
             <div className="text-[12px] text-muted truncate">{c.line}</div>
-          </motion.div>
+          </div>
         ))}
       </div>
     </Card>
@@ -95,8 +90,8 @@ function TeachCard({ t }: { t: TeamDetail }) {
   const submit = (r: string) => r.trim() && teach.mutate(r.trim());
   return (
     <Card className="p-4 sm:p-5 mb-4">
-      <div className="flex items-center gap-2 text-[13.5px] font-semibold">
-        <Sparkles className="size-4" style={{ color: t.color }} />
+      <div className="flex items-center gap-2 text-[14px] font-semibold">
+        <Sparkles className="size-4 text-muted" />
         Teach {t.steward.name} a rule
       </div>
       <form
@@ -113,12 +108,12 @@ function TeachCard({ t }: { t: TeamDetail }) {
       </form>
       <div className="mt-2.5 flex flex-wrap gap-1.5">
         {RULE_IDEAS.map((r) => (
-          <button key={r} type="button" onClick={() => setRule(r)} className="h-7 max-sm:h-9 px-2.5 rounded-full border border-line text-[12px] text-muted hover:text-fg hover:border-line-strong hover:bg-hover transition-colors cursor-pointer">
+          <button key={r} type="button" onClick={() => setRule(r)} className="h-7 max-sm:h-9 px-2.5 rounded-md bg-hover text-[12px] text-soft hover:text-fg transition-colors cursor-pointer">
             {r}
           </button>
         ))}
       </div>
-      <div className="mt-2.5 text-[12px] text-faint">Same as typing <code className="font-mono">/keel teach …</code> in Slack. Rules shape replies when a model is connected.</div>
+      <div className="mt-2.5 text-[12px] text-muted">Same as typing <code className="font-mono">/keel teach …</code> in Slack. Rules shape replies when a model is connected.</div>
       {teach.error && <ErrorLine error={errorLine(teach.error)} className="mt-3" />}
     </Card>
   );
@@ -126,28 +121,28 @@ function TeachCard({ t }: { t: TeamDetail }) {
 
 function Diff({ l }: { l: Lesson }) {
   return (
-    <div className="mt-2.5 space-y-2 text-[12.5px]">
+    <div className="mt-2.5 space-y-2 text-[12px]">
       {l.situation && (
         <div className="text-muted">
-          <span className="text-faint">When: </span>“{l.situation}”
+          <span className="text-muted">When: </span>“{l.situation}”
         </div>
       )}
       {(l.before || l.after) && (
         <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 items-stretch">
-          <div className="rounded-lg border border-bad/20 bg-bad/6 px-3 py-2 text-fg/80 whitespace-pre-wrap break-words">
-            <div className="text-[10.5px] uppercase tracking-[0.07em] text-bad/80 mb-1">{l.kind === "reply" ? "It wrote" : "It did"}</div>
+          <div className="rounded-lg bg-bad-soft px-3 py-2 text-soft whitespace-pre-wrap break-words">
+            <div className="text-[12px] text-bad mb-1">{l.kind === "reply" ? "It wrote" : "It did"}</div>
             {l.before || "–"}
           </div>
-          <ArrowRight className="size-4 self-center justify-self-center text-faint max-sm:rotate-90" />
-          <div className="rounded-lg border border-ok/25 bg-ok/8 px-3 py-2 whitespace-pre-wrap break-words">
-            <div className="text-[10.5px] uppercase tracking-[0.07em] text-ok mb-1">{l.after ? "Should be" : "Rejected"}</div>
+          <ArrowRight className="size-4 self-center justify-self-center text-muted max-sm:rotate-90" />
+          <div className="rounded-lg bg-ok-soft px-3 py-2 whitespace-pre-wrap break-words">
+            <div className="text-[12px] text-ok mb-1">{l.after ? "Should be" : "Rejected"}</div>
             {l.after || "Not sent."}
           </div>
         </div>
       )}
       {l.note && l.kind !== "rule" && (
         <div className="text-muted">
-          <span className="text-faint">Why: </span>
+          <span className="text-muted">Why: </span>
           {l.note}
         </div>
       )}
@@ -173,15 +168,15 @@ function LessonRow({ l, t, i }: { l: Lesson; t: TeamDetail; i: number }) {
   return (
     <motion.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }} className={cn("px-4 sm:px-5 py-3.5 border-b border-line last:border-b-0 transition-opacity", !active && "opacity-55")}>
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 grid place-items-center size-8 rounded-lg bg-sunken border border-line shrink-0 text-[15px]" aria-hidden>
+        <span className="mt-0.5 grid place-items-center size-8 rounded-lg bg-hover text-soft shrink-0" aria-hidden>
           {meta.icon}
         </span>
         <button type="button" disabled={!expandable} onClick={() => setOpen((o) => !o)} className={cn("min-w-0 flex-1 text-left", expandable && "cursor-pointer")} aria-expanded={expandable ? open : undefined}>
           <div className="flex items-center gap-2">
-            <span className="text-[13.5px] font-medium">{l.headline}</span>
+            <span className="text-[14px] font-medium">{l.headline}</span>
             {l.label !== "public" && l.label !== "internal" && <LabelBadge label={l.label} className="shrink-0" />}
           </div>
-          <div className="text-[11.5px] text-faint mt-1 flex flex-wrap items-center gap-x-1.5">
+          <div className="text-[12px] text-muted mt-1 flex flex-wrap items-center gap-x-1.5">
             <span>
               {origin(l)} {l.author || "someone"} · {ago(l.created_at)}
             </span>
@@ -189,7 +184,7 @@ function LessonRow({ l, t, i }: { l: Lesson; t: TeamDetail; i: number }) {
             {expandable && <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />}
           </div>
         </button>
-        <Switch checked={active} onChange={(v) => toggle.mutate(v)} label={active ? "Switch this lesson off" : "Switch this lesson on"} color={t.color} />
+        <Switch checked={active} onChange={(v) => toggle.mutate(v)} label={active ? "Switch this lesson off" : "Switch this lesson on"} />
       </div>
       <AnimatePresence initial={false}>
         {open && (
@@ -218,7 +213,7 @@ function Lessons({ t, lessons }: { t: TeamDetail; lessons: Lesson[] }) {
         right={<Segmented size="sm" value={kf} onChange={setKf} options={(["all", "rule", "reply", "triage"] as KF[]).map((v) => ({ value: v, label: v === "all" ? "All" : KIND_META[v].label, count: counts[v] ?? 0 }))} />}
       />
       {!shown.length ? (
-        <EmptyState icon="🌱" title={lessons.length ? "Nothing of this kind" : "Nothing learned yet"} line={lessons.length ? "Try another filter." : `Edit a draft, reject one with a reason or teach a rule, and ${t.steward.name} keeps it here.`} />
+        <EmptyState title={lessons.length ? "Nothing of this kind" : "Nothing learned yet"} line={lessons.length ? "Try another filter." : `Edit a draft, reject one with a reason or teach a rule, and ${t.steward.name} keeps it here.`} />
       ) : (
         <div className="border-t border-line">
           {shown.map((l, i) => (
@@ -253,20 +248,20 @@ function GapRow({ g, t }: { g: Gap; t: TeamDetail }) {
   });
   const suggested = g.status === "suggested" && !!g.suggested_answer;
   return (
-    <motion.div layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 40 }} className="px-4 sm:px-5 py-4 border-b border-line last:border-b-0">
+    <motion.div layout initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="px-4 sm:px-5 py-4 border-b border-line last:border-b-0">
       <div className="flex items-start gap-2.5">
-        <MessageCircleQuestion className={cn("size-4 mt-0.5 shrink-0", suggested ? "text-accent" : "text-faint")} />
+        <MessageCircleQuestion className={cn("size-4 mt-0.5 shrink-0", suggested ? "text-accent" : "text-muted")} />
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-medium">{g.question}</div>
-          <div className="text-[11.5px] text-faint mt-0.5">
+          <div className="text-[14px] font-medium">{g.question}</div>
+          <div className="text-[12px] text-muted mt-0.5">
             {g.count > 1 ? <b className="text-warn font-semibold">Asked {g.count}×</b> : "Asked once"}
             {g.asked_by && ` · first by ${g.asked_by}`} · {ago(g.last_asked_at)}
           </div>
         </div>
       </div>
       {suggested && !answering && (
-        <div className="mt-2.5 ml-6.5 rounded-lg border border-accent/25 bg-accent-soft px-3 py-2 text-[12.5px]">
-          <div className="text-[10.5px] uppercase tracking-[0.07em] text-accent mb-1">{g.suggested_by ?? "Someone"} answered in the thread</div>
+        <div className="mt-2.5 ml-6.5 rounded-lg bg-accent-soft px-3 py-2 text-[12px]">
+          <div className="text-[12px] text-accent mb-1">{g.suggested_by ?? "Someone"} answered in the thread</div>
           <div className="whitespace-pre-wrap break-words">{g.suggested_answer}</div>
         </div>
       )}
@@ -276,13 +271,13 @@ function GapRow({ g, t }: { g: Gap; t: TeamDetail }) {
             <div className="mt-2.5 ml-6.5 space-y-2">
               <Textarea autoFocus rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="The answer, as you'd tell a new teammate." aria-label="Answer" />
               <div className="flex items-center gap-2">
-                <Select value={label} onChange={(e) => setLabel(e.target.value as Label)} aria-label="Label" className="h-8 w-[150px] text-[12.5px]">
+                <Select value={label} onChange={(e) => setLabel(e.target.value as Label)} aria-label="Label" className="h-8 w-[150px] text-[12px]">
                   <option value="public">Public</option>
                   <option value="internal">Internal</option>
                   <option value="confidential">Confidential</option>
                   <option value="restricted">Restricted</option>
                 </Select>
-                <span className="text-[11.5px] text-faint">Who may hear it</span>
+                <span className="text-[12px] text-muted">Who may hear it</span>
               </div>
             </div>
           </motion.div>
@@ -325,7 +320,7 @@ function Questions({ t, data }: { t: TeamDetail; data: LearningInfo }) {
     <Card className="overflow-hidden">
       <CardHeader title="Open questions" sub={`Asked of ${t.steward.name}, not in the notes yet. Answer once and it knows.`} />
       {!open.length ? (
-        <EmptyState icon="✨" title="No open questions" line={data.stats.filled_total ? `${plural(data.stats.filled_total, "answer")} saved to knowledge so far.` : `When ${t.steward.name} can't answer from the notes, the question lands here.`} />
+        <EmptyState title="No open questions" line={data.stats.filled_total ? `${plural(data.stats.filled_total, "answer")} saved to knowledge so far.` : `When ${t.steward.name} can't answer from the notes, the question lands here.`} />
       ) : (
         <div className="border-t border-line">
           <AnimatePresence initial={false}>
@@ -333,7 +328,7 @@ function Questions({ t, data }: { t: TeamDetail; data: LearningInfo }) {
               <GapRow key={g.id} g={g} t={t} />
             ))}
           </AnimatePresence>
-          {data.stats.filled_total > 0 && <div className="px-4 sm:px-5 py-2.5 text-[12px] text-faint border-t border-line">{plural(data.stats.filled_total, "answer")} saved to knowledge so far.</div>}
+          {data.stats.filled_total > 0 && <div className="px-4 sm:px-5 py-2.5 text-[12px] text-muted border-t border-line">{plural(data.stats.filled_total, "answer")} saved to knowledge so far.</div>}
         </div>
       )}
     </Card>

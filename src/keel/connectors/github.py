@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import datetime as dt
 import time
+import typing
 
 import httpx
 import joserfc.jwk
 import joserfc.jwt
 
-from keel import errors, models
+from keel import connections, errors, models
 from keel.connectors import base
 
 API_TIMEOUT_S = (
@@ -194,3 +195,17 @@ def test_credentials(auth: GitHubAuth) -> tuple[bool, str]:
     if auth.token:
         return True, f"Connected as {data.get('login')}."
     return True, f"Connected. The app can see {data.get('total_count', 0)} repositories."
+
+
+def auth_for_org(session: typing.Any, org_id: str) -> GitHubAuth | None:
+    """The org's GitHub credentials, or None when GitHub isn't connected."""
+    res = connections.resolve(session, org_id, "github")
+    if not res.configured:
+        return None
+    return GitHubAuth(
+        token=res.secrets.get("token", ""),
+        app_id=res.config.get("app_id", ""),
+        private_key=res.secrets.get("private_key", ""),
+        installation_id=res.config.get("installation_id", ""),
+        api_url=res.config.get("api_url") or "https://api.github.com",
+    )

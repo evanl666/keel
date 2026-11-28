@@ -340,20 +340,12 @@ def connector_for(session: orm.Session, op: models.Operation) -> base.Connector:
             )
         return slack.SlackConnector(res.secrets["bot_token"])
     if system == "github":
-        res = connections.resolve(session, op.org_id, "github")
-        if not res.configured:
+        auth = github.auth_for_org(session, op.org_id)
+        if auth is None:
             raise errors.ConnectorError(
                 errors.AUTH_INVALID, "GitHub isn't connected. Connect it in Setup.", sent=False
             )
-        return github.GitHubConnector(
-            github.GitHubAuth(
-                token=res.secrets.get("token", ""),
-                app_id=res.config.get("app_id", ""),
-                private_key=res.secrets.get("private_key", ""),
-                installation_id=res.config.get("installation_id", ""),
-                api_url=res.config.get("api_url") or "https://api.github.com",
-            )
-        )
+        return github.GitHubConnector(auth)
     raise errors.ConnectorError(errors.BAD_REQUEST, f"No connector handles {op.kind}.", sent=False)
 
 

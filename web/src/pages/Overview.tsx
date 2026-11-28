@@ -6,13 +6,13 @@ import { useState } from "react";
 import { api, errorLine } from "../api/client";
 import { useMe, useOverview } from "../api/hooks";
 import type { TeamSummary } from "../api/types";
-import { Button, Card, CardHeader, Skeleton, Stat, EmptyState } from "../components/ui";
+import { Button, buttonClass, Card, CardHeader, PageHeader, Skeleton, Stat, EmptyState } from "../components/ui";
 import { HealthRing, LevelBadge, StewardAvatar, useTeamMap } from "../components/keel";
 import { TeamGraph } from "../components/TeamGraph";
 import { ActivityFeed } from "../components/ActivityFeed";
 import { mergeActivity, useStream } from "../components/stream";
 import { useToast } from "../components/toast";
-import { alpha, cn, plural } from "../lib/utils";
+import { cn, plural } from "../lib/utils";
 
 function greeting() {
   const h = new Date().getHours();
@@ -24,16 +24,11 @@ export function DemoBanner() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -6 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="relative mb-5 sm:mb-6 flex items-center gap-3 rounded-xl border border-accent/25 bg-accent-soft/60 px-4 min-h-11 max-sm:py-2 overflow-hidden"
-    >
-      <span className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[#a5b0ff] to-[#5b6cff]" />
-      <ShieldCheck className="size-4 text-accent shrink-0" />
-      <span className="min-w-0 text-[13px] text-fg/90 sm:truncate max-sm:leading-snug">
-        <span className="font-semibold">Demo workspace</span>
-        <span className="text-muted max-sm:block"><span className="max-sm:hidden"> · </span>synthetic data · nothing leaves this machine</span>
+    <div className="mb-6 flex items-center gap-3 rounded-xl border border-line bg-panel px-4 min-h-12 max-sm:py-2">
+      <ShieldCheck className="size-4 text-muted shrink-0" />
+      <span className="min-w-0 text-[14px] sm:truncate max-sm:leading-snug">
+        <span className="font-medium">Demo workspace</span>
+        <span className="text-muted max-sm:block"><span className="max-sm:hidden"> · </span>sample data, nothing leaves this machine</span>
       </span>
       <Button
         size="sm"
@@ -57,60 +52,56 @@ export function DemoBanner() {
         <span className="max-sm:hidden">Play next event</span>
         <span className="sm:hidden">Next event</span>
       </Button>
-    </motion.div>
+    </div>
   );
 }
 
-function CountChip({ n, label, tone }: { n: number; label: string; tone?: "bad" | "warn" | "accent" }) {
-  const on = n > 0;
+function Counts({ t }: { t: TeamSummary }) {
+  const c = t.counts;
+  const parts: { n: number; label: string; cls?: string }[] = [
+    { n: c.open, label: "open" },
+    { n: c.at_risk, label: "at risk", cls: c.at_risk ? "text-warn" : undefined },
+    { n: c.overdue, label: "overdue", cls: c.overdue ? "text-bad" : undefined },
+  ];
+  if (c.pending_approvals) parts.push({ n: c.pending_approvals, label: c.pending_approvals === 1 ? "approval" : "approvals" });
+  if (c.incidents_open) parts.push({ n: c.incidents_open, label: c.incidents_open === 1 ? "incident" : "incidents", cls: "text-bad" });
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 h-6 px-2 rounded-md text-[12px] border whitespace-nowrap",
-        !on && "border-line text-faint",
-        on && !tone && "border-line text-muted bg-hover",
-        on && tone === "bad" && "border-bad/30 text-bad bg-bad/10",
-        on && tone === "warn" && "border-warn/30 text-warn bg-warn/10",
-        on && tone === "accent" && "border-accent/30 text-accent bg-accent-soft",
-      )}
-    >
-      <span className="font-semibold tabular">{n}</span>
-      {label}
-    </span>
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted">
+      {parts.map((p) => (
+        <span key={p.label} className={p.cls}>
+          <span className="font-semibold tabular">{p.n}</span> {p.label}
+        </span>
+      ))}
+    </div>
   );
 }
 
 function StewardCard({ t, i }: { t: TeamSummary; i: number }) {
   const s = t.steward;
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}>
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04, duration: 0.15 }}>
       <Link to={`/teams/${t.slug}`} className="group block h-full">
-        <Card glow={alpha(t.color, 0.16)} className="h-full p-5 transition-all duration-200 group-hover:border-line-strong group-hover:-translate-y-0.5 group-hover:shadow-pop overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${alpha(t.color, 0.7)}, transparent)` }} />
-          <div className="flex items-start gap-3.5">
-            <StewardAvatar emoji={s.emoji} color={t.color} paused={s.paused} size="lg" />
+        <Card className="h-full p-5 flex flex-col transition-colors duration-150 group-hover:border-line-strong">
+          <div className="flex items-start gap-3">
+            <StewardAvatar emoji={s.emoji} color={t.color} paused={s.paused} />
             <div className="min-w-0 flex-1 pt-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-[16px] font-semibold tracking-[-0.01em]">{s.name}</span>
+                <span className="text-[14px] font-semibold">{s.name}</span>
                 <LevelBadge level={s.level} />
               </div>
-              <div className="text-[12.5px] text-muted mt-0.5 flex items-center gap-1.5">
+              <div className="text-[12px] text-muted mt-0.5 flex items-center gap-1.5">
                 <span className="size-1.5 rounded-full" style={{ background: t.color }} />
                 {t.name}
-                {s.paused && <span className="text-faint">· paused</span>}
+                {s.paused && <span>· paused</span>}
               </div>
             </div>
-            <HealthRing value={t.health} />
+            <HealthRing value={t.health} size={40} />
           </div>
-          <p className="mt-4 text-[13px] leading-relaxed text-fg/80 min-h-[40px]">{s.status_line}</p>
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            <CountChip n={t.counts.open} label="open" />
-            <CountChip n={t.counts.at_risk} label="at risk" tone="warn" />
-            <CountChip n={t.counts.overdue} label="overdue" tone="bad" />
-            <CountChip n={t.counts.pending_approvals} label={t.counts.pending_approvals === 1 ? "approval" : "approvals"} tone="accent" />
-            {t.counts.incidents_open > 0 && <CountChip n={t.counts.incidents_open} label="incident" tone="bad" />}
+          <p className="mt-3 text-[14px] leading-relaxed text-soft flex-1">{s.status_line}</p>
+          <div className="mt-4 pt-3 border-t border-line flex items-center gap-2">
+            <Counts t={t} />
+            <ArrowUpRight className="ml-auto size-4 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
           </div>
-          <ArrowUpRight className="absolute right-4 bottom-4 size-4 text-faint opacity-0 -translate-x-1 translate-y-1 transition-all group-hover:opacity-100 group-hover:translate-x-0 group-hover:translate-y-0" />
         </Card>
       </Link>
     </motion.div>
@@ -119,14 +110,14 @@ function StewardCard({ t, i }: { t: TeamSummary; i: number }) {
 
 function YourMonth({ teams }: { teams: TeamSummary[] }) {
   return (
-    <Card className="mt-4 px-4 py-3.5 sm:px-5 flex flex-col md:flex-row md:items-center gap-3 md:gap-5 overflow-hidden" glow="rgba(236,72,153,0.07)">
+    <Card className="mt-4 px-4 py-3.5 sm:px-5 flex flex-col md:flex-row md:items-center gap-3 md:gap-5">
       <div className="flex items-center gap-3 min-w-0">
-        <span className="grid place-items-center size-9 shrink-0 rounded-xl bg-gradient-to-br from-[#7c5cff] to-[#ec4899] text-white shadow-soft">
+        <span className="grid place-items-center size-8 shrink-0 rounded-lg bg-hover text-soft">
           <Gift className="size-4" />
         </span>
         <div className="min-w-0">
-          <div className="text-[13.5px] font-semibold">Your month, wrapped</div>
-          <div className="text-[12.5px] text-muted">The last 30 days of each team's promises, as a story you can share.</div>
+          <div className="text-[14px] font-semibold">Your month, wrapped</div>
+          <div className="text-[12px] text-muted">The last 30 days of each team's promises, as a story you can share.</div>
         </div>
       </div>
       <div className="md:ml-auto flex flex-wrap gap-2">
@@ -134,13 +125,10 @@ function YourMonth({ teams }: { teams: TeamSummary[] }) {
           <Link
             key={t.slug}
             to={`/teams/${t.slug}?wrapped=1`}
-            className="group inline-flex items-center gap-2 h-8 max-sm:h-10 pl-1.5 pr-3 rounded-full border border-line bg-panel text-[12.5px] font-medium text-muted hover:text-fg hover:border-line-strong transition-colors"
+            className={buttonClass("secondary", "sm")}
           >
-            <span className="grid place-items-center size-5 rounded-full text-[11px]" style={{ background: alpha(t.color, 0.18) }}>
-              {t.steward.emoji}
-            </span>
+            <span aria-hidden>{t.steward.emoji}</span>
             {t.name}
-            <ArrowUpRight className="size-3 text-faint transition-transform group-hover:translate-x-px group-hover:-translate-y-px" />
           </Link>
         ))}
       </div>
@@ -159,49 +147,40 @@ export function Overview() {
 
   return (
     <div>
-      {me?.demo && <DemoBanner />}
-      <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-end sm:justify-between sm:gap-6 sm:mb-6">
-        <div className="min-w-0">
-          <h1 className="text-[22px] sm:text-[24px] font-semibold tracking-[-0.025em]">
-            {greeting()}
-            {name ? `, ${name}` : ""}.
-          </h1>
-          <p className="text-[13.5px] text-muted mt-1">
-            {data ? (
-              <>
-                {plural(data.teams.length, "steward")} on duty for {data.org.name}.{" "}
-                {t!.pending_approvals ? `${plural(t!.pending_approvals, "draft")} wait for you.` : "Nothing waits for you."}
-              </>
-            ) : (
-              <span className="inline-block w-64"><Skeleton className="h-4" /></span>
-            )}
-          </p>
-        </div>
-        {!!t?.pending_approvals && (
-          <Link to="/approvals" className="shrink-0 self-start sm:self-auto">
-            <Button variant="primary" icon={<Inbox className="size-3.5" />} kbd="G A">
+      <PageHeader
+        title={`${greeting()}${name ? `, ${name}` : ""}`}
+        sub={
+          data
+            ? `${plural(data.teams.length, "steward")} on duty for ${data.org.name} · ${t!.pending_approvals ? `${plural(t!.pending_approvals, "draft")} wait for you` : "nothing waits for you"}`
+            : "Loading…"
+        }
+        right={
+          !!t?.pending_approvals && (
+            <Link to="/approvals" className={buttonClass("primary")} title="Shortcut: G then A">
+              <Inbox className="size-3.5" />
               Review {t.pending_approvals}
-            </Button>
-          </Link>
-        )}
-      </div>
+            </Link>
+          )
+        }
+      />
+      {me?.demo && <DemoBanner />}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {isLoading || !data
-          ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-[210px] rounded-xl" />)
+          ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-[180px] rounded-xl" />)
           : data.teams.map((tm, i) => <StewardCard key={tm.slug} t={tm} i={i} />)}
       </div>
 
-      <Card className="mt-4 px-4 py-4 sm:px-6">
+      <Card className="mt-4 px-4 py-4 sm:px-5">
         {t ? (
           <div className="grid grid-cols-2 gap-y-4 sm:grid-cols-4 lg:grid-cols-7 lg:gap-y-0 lg:divide-x lg:divide-line">
             {[
               <Stat key="o" label="Open" value={t.open} />,
-              <Stat key="d" label="Done · 7d" value={t.done_7d} tone="ok" />,
+              <Stat key="d" label="Done · 7d" value={t.done_7d} />,
               <Stat key="r" label="At risk" value={t.at_risk} tone={t.at_risk ? "warn" : undefined} />,
               <Stat key="v" label="Overdue" value={t.overdue} tone={t.overdue ? "bad" : undefined} />,
-              <Stat key="a" label="Approvals" value={t.pending_approvals} tone={t.pending_approvals ? "accent" : undefined} />,
-              <Stat key="i" label="Incidents" value={t.incidents_open} tone={t.incidents_open ? "bad" : "ok"} />,
+              <Stat key="a" label="Approvals" value={t.pending_approvals} />,
+              <Stat key="i" label="Incidents" value={t.incidents_open} tone={t.incidents_open ? "bad" : undefined} />,
               <Stat key="n" label="To review" value={t.ops_needs_review} tone={t.ops_needs_review ? "warn" : undefined} />,
             ].map((el, i) => (
               <div key={i} className={cn("min-w-0", i > 0 && "lg:pl-5", i % 2 === 1 && "max-sm:pl-4 max-sm:border-l max-sm:border-line", i % 4 !== 0 && "sm:max-lg:pl-4 sm:max-lg:border-l sm:max-lg:border-line")}>
@@ -224,7 +203,7 @@ export function Overview() {
               data.cross_team.length ? (
                 <TeamGraph teams={data.teams} edges={data.cross_team} />
               ) : (
-                <EmptyState icon="🤝" title="No open requests between teams" line="When one team asks another for something, it shows up here." />
+                <EmptyState title="No open requests between teams" line="When one team asks another for something, it shows up here." />
               )
             ) : (
               <Skeleton className="h-[280px] w-full" />
@@ -236,8 +215,8 @@ export function Overview() {
             title="Live activity"
             sub="What stewards did, as it happens."
             right={
-              <span className={cn("inline-flex items-center gap-1.5 text-[11.5px] font-medium", stream.live ? "text-ok" : "text-faint")}>
-                <span className={cn("size-1.5 rounded-full", stream.live ? "bg-ok live-dot" : "bg-faint")} style={{ color: "var(--ok)" }} />
+              <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
+                <span className={cn("size-1.5 rounded-full", stream.live ? "bg-ok live-dot" : "bg-faint")} />
                 {stream.live ? "Live" : "Reconnecting"}
               </span>
             }

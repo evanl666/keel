@@ -8,7 +8,7 @@ import pytest
 import sqlalchemy as sa
 from fastapi import testclient
 
-from keel import db, models, worker
+from keel import auth_utils, db, models, worker
 from keel.api import app as app_module
 
 
@@ -123,17 +123,17 @@ def test_setup_is_open_until_an_admin_exists(fresh: testclient.TestClient) -> No
     me = ok(fresh.get("/api/me"))
     assert me["user"] is None and me["setup_complete"] is False
     assert fresh.get("/api/overview").status_code == 401
-    ok(
-        fresh.post(
-            "/api/setup/admin",
-            json={
-                "org_name": "Testco",
-                "email": "ada@test.example",
-                "name": "Ada",
-                "password": "correct horse battery",
-            },
-        )
-    )
+    assert ok(fresh.get("/api/setup"))["needs_setup_code"] is True
+    admin = {
+        "org_name": "Testco",
+        "email": "ada@test.example",
+        "name": "Ada",
+        "password": "correct horse battery",
+    }
+    wrong = fresh.post("/api/setup/admin", json={**admin, "setup_code": "0000-0000"})
+    assert wrong.status_code == 400 and "setup code" in wrong.json()["detail"]
+    ok(fresh.post("/api/setup/admin", json={**admin, "setup_code": auth_utils.setup_code().lower()}))
+    assert ok(fresh.get("/api/setup"))["needs_setup_code"] is False
     assert ok(fresh.get("/api/me"))["user"]["role"] == "org_admin"
     fresh.cookies.clear()
     r = fresh.post(

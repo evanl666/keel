@@ -12,7 +12,20 @@ import typing
 
 import sqlalchemy as sa
 
-from keel import checkup, db, feed, gateway, jobs, models, rhythm, services, steward
+from keel import (
+    checkup,
+    config,
+    db,
+    feed,
+    gateway,
+    github_poll,
+    jobs,
+    knowledge_sync,
+    models,
+    rhythm,
+    services,
+    steward,
+)
 
 log = logging.getLogger(__name__)
 
@@ -20,6 +33,7 @@ POLL_INTERVAL_S = 1.0  # Idle wait between queue polls; low enough that the UI f
 TIMER_INTERVAL_S = 5.0  # How often timers (service checks, briefs, stale leases) are evaluated.
 NUDGE_INTERVAL = dt.timedelta(hours=1)  # Nudges are rate-limited per commitment anyway; hourly is plenty.
 CLAIM_BATCH = 10
+HOUSEKEEPING_INTERVAL = dt.timedelta(hours=6)  # Audit retention and Slack channel lookups; cheap, not urgent.
 
 Handler = typing.Callable[[dict[str, typing.Any]], None]
 
@@ -63,7 +77,29 @@ def _nudge(_p: dict) -> None:
         rhythm.nudge(s)
 
 
+def _sync_knowledge(p: dict) -> None:
+    with db.session() as s:
+        src = s.get(models.KnowledgeSource, p["source"])
+        if src is not None:
+            knowledge_sync.sync(s, src)
+
+
+def _github_poll(_p: dict) -> None:
+    github_poll.poll_all()
+
+
+def _housekeeping(_p: dict) -> None:
+    from keel import slack_lookup
+
+    with db.session() as s:
+        feed.prune_audit(s, config.get().audit_retention_days)
+        slack_lookup.resolve_all(s)
+
+
 HANDLERS: dict[str, Handler] = {
+    "sync_knowledge": _sync_knowledge,
+    "github_poll": _github_poll,
+    "housekeeping": _housekeeping,
     "dispatch": _dispatch,
     "reconcile": _reconcile,
     "process_inbox": _inbox,
@@ -108,6 +144,19 @@ def drain(max_rounds: int = 50, worker_id: str = "drain") -> int:
     return ran
 
 
+def _every(s: sa.orm.Session, key: str, interval: dt.timedelta, now: dt.datetime) -> bool:
+    """True (and remember ``now``) when ``interval`` has passed since this timer last fired. Shared by workers."""
+    cur = s.get(models.SyncCursor, key)
+    if cur is not None and now - dt.datetime.fromisoformat(cur.value) < interval:
+        return False
+    if cur is None:
+        s.add(models.SyncCursor(key=key, value=now.isoformat()))
+    else:
+        cur.value = now.isoformat()
+    s.flush()
+    return True
+
+
 def timers(now: dt.datetime | None = None, last_nudge: dict[str, dt.datetime] | None = None) -> None:
     """Schedule periodic work. Every enqueue is deduplicated, so several workers can run this safely."""
     now = now or models.utcnow()
@@ -144,6 +193,25 @@ def timers(now: dt.datetime | None = None, last_nudge: dict[str, dt.datetime] | 
             if org is not None:
                 jobs.enqueue(s, org.id, "nudge", {}, dedupe_key=f"nudge:{now:%Y-%m-%dT%H}")
             last_nudge["at"] = now
+        for src in knowledge_sync.due(s, now):
+            src.next_sync_at = (
+                now + knowledge_sync.RETRY_AFTER_ERROR
+            )  # Claimed; sync() sets the real next time.
+            jobs.enqueue(
+                s,
+                src.org_id,
+                "sync_knowledge",
+                {"source": src.id},
+                dedupe_key=f"ksync:{src.id}:{now:%Y%m%d%H%M}",
+            )
+        org = s.scalar(sa.select(models.Org).order_by(models.Org.created_at))
+        if org is not None and not org.settings.get("demo"):
+            if github_poll.enabled(s, org.id) and _every(
+                s, "timer:github_poll", github_poll.POLL_INTERVAL, now
+            ):
+                jobs.enqueue(s, org.id, "github_poll", {}, dedupe_key="github_poll")
+            if _every(s, "timer:housekeeping", HOUSEKEEPING_INTERVAL, now):
+                jobs.enqueue(s, org.id, "housekeeping", {}, dedupe_key="housekeeping")
 
 
 class Worker:

@@ -155,7 +155,11 @@ def get_setup(s: deps.Session, _u: Guard) -> dict:
             else "One team, one steward.",
         },
     ]
-    return {"steps": steps, "slack_manifest_url": "/api/setup/slack-manifest"}
+    return {
+        "steps": steps,
+        "slack_manifest_url": "/api/setup/slack-manifest",
+        "needs_setup_code": needs_setup_code() and not has_admin(s),
+    }
 
 
 class AdminBody(pydantic.BaseModel):
@@ -163,6 +167,7 @@ class AdminBody(pydantic.BaseModel):
     email: str
     password: str
     org_name: str
+    setup_code: str = ""
 
 
 class ModelBody(pydantic.BaseModel):
@@ -191,7 +196,17 @@ class PolicyBody(pydantic.BaseModel):
     label_default: str = "internal"
 
 
+def needs_setup_code() -> bool:
+    """Outside demo mode, creating the first admin takes the code from the server log, so a stranger who finds
+    a fresh install first can't claim it."""
+    return not config.get().demo
+
+
 def _check_admin(b: AdminBody) -> None:
+    if needs_setup_code() and not auth_utils.setup_code_ok(b.setup_code):
+        raise ValueError(
+            "That setup code doesn't match. It's in the server log at startup, or run `keel setup-code`."
+        )
     if not b.name.strip() or not b.org_name.strip():
         raise ValueError("Fill in your name and the organization name.")
     if "@" not in b.email:
@@ -284,14 +299,8 @@ def save_step(
         s.add(admin)
         s.flush()
         feed.audit(s, org.id, f"user:{admin.email}", "setup.admin", admin.email)
-        response.set_cookie(
-            deps.COOKIE,
-            auth_utils.sign_session(admin.id),
-            httponly=True,
-            samesite="lax",
-            secure=request.url.scheme == "https",
-            max_age=auth_utils.SESSION_MAX_AGE_S,
-        )
+        deps.set_session_cookie(request, response, admin.id)
+        admin.last_seen_at = models.utcnow()
         return {"ok": True, "message": f"Welcome, {admin.name}. You're the admin of {org.name}."}
     org = _need_org(s)
     actor = f"user:{u.email}" if u else "setup"
@@ -370,7 +379,7 @@ features:
   slash_commands:
     - command: /keel
       description: Ask your team's steward
-      usage_hint: "status | teach <rule> | ask <question> | log <commitment>"
+      usage_hint: "help | status | ask <question> | teach <rule> | <a request>"
       should_escape: false
 oauth_config:
   scopes:

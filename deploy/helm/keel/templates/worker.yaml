@@ -15,6 +15,11 @@ spec:
         app.kubernetes.io/component: worker
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if and .Values.metrics.annotations .Values.worker.metricsPort }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.worker.metricsPort | quote }}
+        prometheus.io/path: /metrics
+        {{- end }}
     spec:
       # Kubernetes adds KEEL_PORT=tcp://... for a Service named keel; that clashes with Keel's KEEL_ settings.
       enableServiceLinks: false
@@ -33,5 +38,11 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["worker"]
           {{- include "keel.podEnv" . | nindent 10 }}
+          env:
+            - {name: KEEL_WORKER_METRICS_PORT, value: {{ .Values.worker.metricsPort | quote }}}
+          {{- if .Values.worker.metricsPort }}
+          ports:
+            - {name: metrics, containerPort: {{ .Values.worker.metricsPort }}}
+          {{- end }}
           resources: {{- toYaml .Values.worker.resources | nindent 12 }}
       {{- include "keel.podVolumes" . | nindent 6 }}

@@ -13,13 +13,24 @@ import type {
   CrossTeamEdge,
   Duty,
   Gap,
+  CreateInviteBody,
+  Invite,
+  InviteInfo,
   KnowledgeDoc,
+  KnowledgeDocFull,
+  KnowledgeSource,
   Label,
   LearningStats,
   Lesson,
   Level,
   Me,
+  Member,
   Operation,
+  OrgRole,
+  PatchKnowledgeBody,
+  PatchTeamBody,
+  TeamDetail,
+  TeamRole,
   Overview,
   Service,
   SetupStepId,
@@ -48,6 +59,12 @@ const state = {
   audit: D.makeAudit(),
   checkups: D.makeCheckups(),
   setup: D.makeSetup(),
+  sources: D.makeKnowledgeSources(),
+  people: D.makePeople(),
+  invites: D.makeInvites(),
+  // One-time invite links: token -> invite id. "demo" works in the mock; "old" has expired.
+  inviteTokens: { demo: "inv_2", old: "inv_0" } as Record<string, string>,
+  settings: D.makeTeamSettings(),
   tick: 0,
   seq: 1000,
 };
@@ -241,7 +258,7 @@ function askAnswer(slug: string, question: string): AskResult {
   return {
     answer: `${top[0].snippet}${top[1] ? `\n\nRelated: ${top[1].snippet}` : ""}`,
     label: top.some((d) => d.label === "internal") ? "internal" : "public",
-    sources: top.map((d) => ({ title: d.title, source: d.source, label: d.label })),
+    sources: top.map((d) => ({ title: d.title, source: d.source, label: d.label, url: d.source_url })),
     withheld: Math.min(hidden, 3),
   };
 }
@@ -362,10 +379,300 @@ const script: (() => ActivityItem)[] = [
     return emit({ team_slug: "platform", kind: "commitment", icon: "🎉", text: "Platform finished C-83. Pip unblocked C-90.", link: "/commitments/C-83" });
   },
   () => {
-    state.knowledge.platform.unshift({ id: nid("kd"), title: "Staging env checklist", source: "Notion · Platform/Self-serve", label: "internal", updated_at: now(), snippet: "DNS, secrets, seed data and a smoke test. Takes about 40 minutes.", chars: 2210 });
+    state.knowledge.platform.unshift(newDoc({ title: "Staging env checklist", source: "Notion · Platform/Self-serve", label: "internal", snippet: "DNS, secrets, seed data and a smoke test. Takes about 40 minutes.", chars: 2210 }));
     return emit({ team_slug: "platform", kind: "knowledge", icon: "📚", text: "Bolt learned a new doc: Staging env checklist.", link: "/teams/platform/knowledge" });
   },
 ];
+
+const contents: Record<string, string> = {};
+const dayFrom = (days: number) => new Date(Date.now() + days * D.DAY).toISOString().slice(0, 10);
+
+function newDoc(p: Pick<KnowledgeDoc, "title" | "source" | "label" | "snippet" | "chars"> & Partial<KnowledgeDoc>): KnowledgeDoc {
+  return { id: nid("kd"), updated_at: now(), origin: "manual", source_url: null, review_by: dayFrom(90), stale: false, sync_id: null, ...p };
+}
+
+function teamDetail(t: D.MockTeam): TeamDetail {
+  const me = state.people.find((p) => p.id === user.id)?.teams.find((x) => x.slug === t.slug);
+  return {
+    ...computeTeam(t),
+    today: state.briefs[t.slug]?.find((b) => b.kind === "daily") ?? null,
+    activity: state.activity.filter((a) => a.team_slug === t.slug).slice(0, 20),
+    settings: (state.settings[t.slug] ??= { slack_channel: null, slack_channel_id: null, slack_connected: true, github_repos: [], timezone: "UTC", brief_hour: 9, sso_groups: [] }),
+    my_role: me?.role ?? null,
+  };
+}
+
+function members(slug: string): Member[] {
+  return state.people
+    .filter((p) => !p.disabled)
+    .flatMap((p) => p.teams.filter((x) => x.slug === slug).map((x) => ({ user_id: p.id, name: p.name, email: p.email, role: x.role, avatar_url: p.avatar_url })));
+}
+
+function person(id: string) {
+  const p = state.people.find((x) => x.id === id);
+  if (!p) throw new ApiError(404, "That person isn't in this workspace.");
+  return p;
+}
+
+function findDoc(slug: string, id: string) {
+  const d = (state.knowledge[slug] ?? []).find((x) => x.id === id);
+  if (!d) throw new ApiError(404, "That doc doesn't exist any more.");
+  return d;
+}
+
+function findSource(slug: string, id: string) {
+  const s = (state.sources[slug] ?? []).find((x) => x.id === id);
+  if (!s) throw new ApiError(404, "That source doesn't exist any more.");
+  return s;
+}
+
+function syncLater(slug: string, src: KnowledgeSource) {
+  src.status = "pending";
+  src.status_line = "Syncing…";
+  setTimeout(() => {
+    const t = team(slug);
+    if (src.kind === "url" && /login|sso|intranet/.test(src.target)) {
+      Object.assign(src, { status: "error", status_line: "The page asked for a login. Keel can only read public pages.", last_synced_at: now() });
+      return;
+    }
+    const docs = state.knowledge[slug] ?? [];
+    if (!docs.some((d) => d.sync_id === src.id)) {
+      const name = src.target.split("/").filter(Boolean).pop() ?? src.target;
+      const title = name.replace(/[-_]/g, " ").replace(/\.\w+$/, "").replace(/^\w/, (c) => c.toUpperCase());
+      const d = newDoc({ title, source: src.kind === "github" ? `GitHub · ${src.target}` : `Web · ${new URL(src.target).host}`, label: src.label, snippet: `Synced from ${src.target}.`, chars: 1600, origin: src.kind, source_url: src.kind === "github" ? `https://github.com/${src.target}` : src.target, sync_id: src.id, review_by: null });
+      docs.unshift(d);
+      state.knowledge[slug] = docs;
+      emit({ team_slug: slug, kind: "knowledge", icon: "📚", text: `${t.steward.name} synced ${d.title} from ${src.target}.`, link: `/teams/${slug}/knowledge` });
+    }
+    const n = docs.filter((d) => d.sync_id === src.id).length;
+    Object.assign(src, { status: "ok", status_line: `Synced ${n} ${src.kind === "url" ? (n === 1 ? "page" : "pages") : n === 1 ? "doc" : "docs"}.`, docs: n, last_synced_at: now() });
+  }, 1800);
+}
+
+function adminRoutes(): [Method, RegExp, Handler][] {
+  const KNOWN_CHANNELS: Record<string, string> = { "#payments": "C024PAY", "#platform": "C031PLT", "#payments-incidents": "C024INC", "#eng": "C001ENG" };
+  const adminOnly = () => {
+    if (user.role !== "org_admin") throw new ApiError(403, "Only org admins can do that.");
+  };
+  return [
+    ["PATCH", /^\/api\/teams\/([\w-]+)$/, (m, b) => {
+      const t = team(m[1]);
+      const p = body<PatchTeamBody>(b);
+      const st = teamDetail(t).settings;
+      if (p.name !== undefined) {
+        if (!p.name.trim()) throw new ApiError(400, "Give the team a name.");
+        t.name = p.name.trim();
+      }
+      if (p.slack_channel !== undefined) {
+        const ch = p.slack_channel.trim();
+        st.slack_channel = ch ? (ch.startsWith("#") || /^C[A-Z0-9]+$/.test(ch) ? ch : `#${ch}`) : null;
+        st.slack_channel_id = st.slack_channel && st.slack_connected ? (KNOWN_CHANNELS[st.slack_channel] ?? (/^C[A-Z0-9]+$/.test(ch) ? ch : null)) : null;
+        if (st.slack_channel) t.channel = st.slack_channel;
+      }
+      if (p.github_repos !== undefined) {
+        const bad = p.github_repos.find((r) => !/^[\w.-]+\/[\w.-]+$/.test(r));
+        if (bad) throw new ApiError(400, `"${bad}" isn't a repo. Use owner/name, like acme/payments-api.`);
+        st.github_repos = p.github_repos;
+      }
+      if (p.timezone !== undefined) st.timezone = p.timezone;
+      if (p.brief_hour !== undefined) {
+        if (p.brief_hour < 0 || p.brief_hour > 23) throw new ApiError(400, "The brief hour must be between 0 and 23.");
+        st.brief_hour = p.brief_hour;
+      }
+      if (p.sso_groups !== undefined) st.sso_groups = p.sso_groups;
+      audit(user.email, "team.update", t.slug, Object.keys(p).join(", "), t.slug);
+      return teamDetail(t);
+    }],
+    ["DELETE", /^\/api\/teams\/([\w-]+)$/, (m, _b, url) => {
+      adminOnly();
+      const t = team(m[1]);
+      if (url.searchParams.get("confirm") !== t.slug) throw new ApiError(400, `Type ${t.slug} to confirm.`);
+      state.teams = state.teams.filter((x) => x.slug !== t.slug);
+      for (const p of state.people) p.teams = p.teams.filter((x) => x.slug !== t.slug);
+      audit(user.email, "team.delete", t.slug, `Deleted ${t.name}`, null);
+      return { ok: true, message: `${t.name} is gone. Its ledger stays in the audit log.` };
+    }],
+    ["GET", /^\/api\/teams\/([\w-]+)\/members$/, (m) => members(team(m[1]).slug)],
+    ["POST", /^\/api\/teams\/([\w-]+)\/members$/, (m, b) => {
+      const t = team(m[1]);
+      const p = body<{ email: string; role: TeamRole }>(b);
+      const who = state.people.find((x) => x.email.toLowerCase() === (p.email ?? "").trim().toLowerCase());
+      if (!who) throw new ApiError(404, "No one with that email yet. Invite them first.");
+      if (who.teams.some((x) => x.slug === t.slug)) throw new ApiError(409, `${who.name} is already in ${t.name}.`);
+      who.teams.push({ slug: t.slug, name: t.name, role: p.role ?? "member" });
+      audit(user.email, "member.add", who.email, `${p.role ?? "member"} of ${t.name}`, t.slug);
+      return members(t.slug).find((x) => x.user_id === who.id);
+    }],
+    ["PATCH", /^\/api\/teams\/([\w-]+)\/members\/(\w+)$/, (m, b) => {
+      const t = team(m[1]);
+      const pt = person(m[2]).teams.find((x) => x.slug === t.slug);
+      if (!pt) throw new ApiError(404, "They aren't in this team.");
+      const role = body<{ role: TeamRole }>(b).role;
+      if (pt.role === "admin" && role !== "admin" && members(t.slug).filter((x) => x.role === "admin").length === 1)
+        throw new ApiError(409, "A team needs at least one admin. Make someone else admin first.");
+      pt.role = role;
+      return members(t.slug).find((x) => x.user_id === m[2]);
+    }],
+    ["DELETE", /^\/api\/teams\/([\w-]+)\/members\/(\w+)$/, (m) => {
+      const t = team(m[1]);
+      const p = person(m[2]);
+      p.teams = p.teams.filter((x) => x.slug !== t.slug);
+      audit(user.email, "member.remove", p.email, `Removed from ${t.name}`, t.slug);
+      return { ok: true, message: `${p.name} is no longer in ${t.name}.` };
+    }],
+
+    ["GET", /^\/api\/people$/, () => {
+      adminOnly();
+      return state.people;
+    }],
+    ["PATCH", /^\/api\/people\/(\w+)$/, (m, b) => {
+      adminOnly();
+      const p = person(m[1]);
+      const x = body<{ role?: OrgRole; disabled?: boolean }>(b);
+      const admins = state.people.filter((q) => q.role === "org_admin" && !q.disabled);
+      const demoting = (x.role && x.role !== "org_admin") || x.disabled;
+      if (demoting && p.id === user.id) throw new ApiError(409, "You can't do that to yourself. Ask another admin.");
+      if (demoting && p.role === "org_admin" && admins.length === 1) throw new ApiError(409, "Keel needs at least one admin.");
+      if (x.role) p.role = x.role;
+      if (x.disabled !== undefined) p.disabled = x.disabled;
+      audit(user.email, x.disabled !== undefined ? (x.disabled ? "person.disable" : "person.enable") : "person.role", p.email, x.role ?? "", null);
+      return p;
+    }],
+    ["DELETE", /^\/api\/people\/(\w+)$/, (m) => {
+      adminOnly();
+      const p = person(m[1]);
+      if (p.id === user.id) throw new ApiError(409, "You can't remove yourself. Ask another admin.");
+      state.people = state.people.filter((x) => x.id !== p.id);
+      audit(user.email, "person.remove", p.email, "", null);
+      return { ok: true, message: `${p.name} is removed.` };
+    }],
+    ["GET", /^\/api\/invites$/, () => {
+      adminOnly();
+      return [...state.invites].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    }],
+    ["POST", /^\/api\/invites$/, (_m, b) => {
+      adminOnly();
+      const p = body<CreateInviteBody>(b);
+      const email = (p.email ?? "").trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ApiError(400, "That email address doesn't look right.");
+      if (state.people.some((x) => x.email === email)) throw new ApiError(409, "They're already in Acme.");
+      if (state.invites.some((x) => x.email === email && x.status === "pending")) throw new ApiError(409, "They already have an invite. Revoke it to send a new one.");
+      const inv: Invite = {
+        id: nid("inv"),
+        email,
+        role: p.role ?? "member",
+        teams: (p.teams ?? []).map((x) => ({ slug: x.slug, name: team(x.slug).name, role: x.role })),
+        invited_by: user.name,
+        created_at: now(),
+        expires_at: new Date(Date.now() + 7 * D.DAY).toISOString(),
+        status: "pending",
+      };
+      state.invites.unshift(inv);
+      const token = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+      state.inviteTokens[token] = inv.id;
+      audit(user.email, "invite.create", email, inv.teams.map((x) => x.name).join(", ") || "no teams", null);
+      return { invite: inv, url: `/invite/${token}` };
+    }],
+    ["DELETE", /^\/api\/invites\/(\w+)$/, (m) => {
+      adminOnly();
+      const inv = state.invites.find((x) => x.id === m[1]);
+      if (!inv) throw new ApiError(404, "That invite doesn't exist.");
+      inv.status = "revoked";
+      audit(user.email, "invite.revoke", inv.email, "", null);
+      return { ok: true, message: `The invite for ${inv.email} no longer works.` };
+    }],
+    ["GET", /^\/api\/invite\/(\w+)$/, (m): InviteInfo => {
+      const id = state.inviteTokens[m[1]];
+      if (id === "inv_0") return { email: "old@acme.dev", org: "Acme", invited_by: "Maya Chen", teams: ["Payments"], status: "expired", sso_enabled: true };
+      const inv = state.invites.find((x) => x.id === id);
+      if (!inv) throw new ApiError(404, "This invite link doesn't work. Ask whoever sent it for a new one.");
+      return { email: inv.email, org: "Acme", invited_by: inv.invited_by, teams: inv.teams.map((x) => x.name), status: inv.status, sso_enabled: true };
+    }],
+    ["POST", /^\/api\/invite\/(\w+)$/, (m, b) => {
+      const inv = state.invites.find((x) => x.id === state.inviteTokens[m[1]]);
+      if (!inv || inv.status !== "pending") throw new ApiError(410, "This invite has already been used or has expired.");
+      const p = body<{ name: string; password: string }>(b);
+      if (!p.name?.trim()) throw new ApiError(400, "Tell us your name.");
+      if ((p.password ?? "").length < 12) throw new ApiError(400, "Use a password with at least 12 characters.");
+      inv.status = "accepted";
+      state.people.push({ id: nid("u"), name: p.name.trim(), email: inv.email, role: inv.role, avatar_url: null, disabled: false, sso: false, slack_linked: false, github_login: null, teams: inv.teams, created_at: now(), last_seen_at: now() });
+      localStorage.removeItem(SIGNED_OUT_KEY);
+      return { ok: true, message: "Welcome to Acme." };
+    }],
+
+    ["GET", /^\/api\/teams\/([\w-]+)\/knowledge\/(\w+)$/, (m): KnowledgeDocFull => {
+      const slug = team(m[1]).slug;
+      const d = findDoc(slug, m[2]);
+      return { ...d, content: contents[d.id] ?? D.docContent(d) };
+    }],
+    ["PATCH", /^\/api\/teams\/([\w-]+)\/knowledge\/(\w+)$/, (m, b) => {
+      const slug = team(m[1]).slug;
+      const d = findDoc(slug, m[2]);
+      if (d.sync_id) throw new ApiError(409, "This doc is synced from its source. Edit it there.");
+      const p = body<PatchKnowledgeBody>(b);
+      if (p.title !== undefined) {
+        if (!p.title.trim()) throw new ApiError(400, "A doc needs a title.");
+        d.title = p.title.trim();
+      }
+      if (p.content !== undefined) {
+        contents[d.id] = p.content;
+        d.snippet = p.content.replace(/^#.*$/m, "").trim().slice(0, 180);
+        d.chars = p.content.length;
+      }
+      if (p.label) d.label = p.label;
+      if (p.review_by !== undefined) {
+        d.review_by = p.review_by || null;
+        d.stale = !!d.review_by && d.review_by < dayFrom(0);
+      }
+      d.updated_at = now();
+      audit(user.email, "knowledge.update", d.title, Object.keys(p).join(", "), slug);
+      return d;
+    }],
+    ["DELETE", /^\/api\/teams\/([\w-]+)\/knowledge\/(\w+)$/, (m) => {
+      const slug = team(m[1]).slug;
+      const d = findDoc(slug, m[2]);
+      state.knowledge[slug] = state.knowledge[slug].filter((x) => x.id !== d.id);
+      audit(user.email, "knowledge.delete", d.title, "", slug);
+      return { ok: true, message: `${team(slug).steward.name} forgot ${d.title}.` };
+    }],
+    ["POST", /^\/api\/teams\/([\w-]+)\/knowledge\/(\w+)\/reviewed$/, (m) => {
+      const slug = team(m[1]).slug;
+      const d = findDoc(slug, m[2]);
+      d.review_by = dayFrom(90);
+      d.stale = false;
+      audit(user.email, "knowledge.reviewed", d.title, `Review by ${d.review_by}`, slug);
+      return d;
+    }],
+    ["GET", /^\/api\/teams\/([\w-]+)\/knowledge-sources$/, (m) => state.sources[team(m[1]).slug] ?? []],
+    ["POST", /^\/api\/teams\/([\w-]+)\/knowledge-sources$/, (m, b) => {
+      const slug = team(m[1]).slug;
+      const p = body<{ kind: KnowledgeSource["kind"]; target: string; label: Label }>(b);
+      const target = (p.target ?? "").trim().replace(/^https:\/\/github\.com\//, p.kind === "github" ? "" : "https://github.com/");
+      if (p.kind === "url" && !/^https?:\/\/\S+\.\S+/.test(target)) throw new ApiError(400, "Paste a full link that starts with https://.");
+      if (p.kind === "github" && !/^[\w.-]+\/[\w.-]+(\/[\w./-]+)?$/.test(target)) throw new ApiError(400, "Use owner/repo or owner/repo/path/to/folder.");
+      const src: KnowledgeSource = { id: nid("ks"), kind: p.kind, target, label: p.label ?? "internal", last_synced_at: null, status: "pending", status_line: "Syncing…", docs: 0 };
+      (state.sources[slug] ??= []).push(src);
+      audit(user.email, "knowledge_source.add", target, p.kind, slug);
+      syncLater(slug, src);
+      return src;
+    }],
+    ["POST", /^\/api\/teams\/([\w-]+)\/knowledge-sources\/(\w+)\/sync$/, (m) => {
+      const slug = team(m[1]).slug;
+      const src = findSource(slug, m[2]);
+      syncLater(slug, src);
+      return src;
+    }],
+    ["DELETE", /^\/api\/teams\/([\w-]+)\/knowledge-sources\/(\w+)$/, (m) => {
+      const slug = team(m[1]).slug;
+      const src = findSource(slug, m[2]);
+      state.sources[slug] = state.sources[slug].filter((x) => x.id !== src.id);
+      const before = (state.knowledge[slug] ?? []).length;
+      state.knowledge[slug] = (state.knowledge[slug] ?? []).filter((d) => d.sync_id !== src.id);
+      audit(user.email, "knowledge_source.remove", src.target, "", slug);
+      return { ok: true, message: `Removed ${src.target} and its ${before - state.knowledge[slug].length} docs.` };
+    }],
+  ];
+}
 
 function body<T>(b: unknown): T {
   return (b ?? {}) as T;
@@ -392,7 +699,7 @@ const routes: [Method, RegExp, Handler][] = [
     localStorage.setItem(SIGNED_OUT_KEY, "1");
     return { ok: true };
   }],
-  ["GET", /^\/api\/setup$/, () => ({ steps: state.setup, slack_manifest_url: "/api/setup/slack-manifest" })],
+  ["GET", /^\/api\/setup$/, () => ({ steps: state.setup, slack_manifest_url: "/api/setup/slack-manifest", needs_setup_code: !state.setup.find((x) => x.id === "admin")?.done })],
   ["POST", /^\/api\/setup\/(\w+)\/test$/, (m, b) => setupTest(m[1] as SetupStepId, body(b))],
   ["POST", /^\/api\/setup\/(\w+)$/, (m, b) => {
     const t = setupTest(m[1] as SetupStepId, body(b));
@@ -419,8 +726,9 @@ const routes: [Method, RegExp, Handler][] = [
   }],
   ["GET", /^\/api\/teams\/([\w-]+)$/, (m) => {
     const t = team(m[1]);
-    return { ...computeTeam(t), today: state.briefs[t.slug]?.find((b) => b.kind === "daily") ?? null, activity: state.activity.filter((a) => a.team_slug === t.slug).slice(0, 20) };
+    return teamDetail(t);
   }],
+  ...adminRoutes(),
   ["PATCH", /^\/api\/teams\/([\w-]+)\/steward$/, (m, b) => {
     const t = team(m[1]);
     const p = body<{ paused?: boolean; name?: string; emoji?: string; duties?: Duty[] }>(b);
@@ -525,9 +833,10 @@ const routes: [Method, RegExp, Handler][] = [
   ["GET", /^\/api\/teams\/([\w-]+)\/knowledge$/, (m) => state.knowledge[team(m[1]).slug] ?? []],
   ["POST", /^\/api\/teams\/([\w-]+)\/knowledge$/, (m, b) => {
     const t = team(m[1]);
-    const p = body<{ title: string; content: string; label: Label; source?: string }>(b);
+    const p = body<{ title: string; content: string; label: Label; source?: string; review_by?: string }>(b);
     if (!p.title?.trim() || !p.content?.trim()) throw new ApiError(400, "A doc needs a title and some content.");
-    const d: KnowledgeDoc = { id: nid("kd"), title: p.title, source: p.source || "Added in Keel", label: p.label, updated_at: now(), snippet: p.content.slice(0, 180), chars: p.content.length };
+    const d = newDoc({ title: p.title, source: p.source || "Added in Keel", label: p.label, snippet: p.content.slice(0, 180), chars: p.content.length, review_by: p.review_by || dayFrom(90) });
+    contents[d.id] = p.content;
     (state.knowledge[t.slug] ??= []).unshift(d);
     emit({ team_slug: t.slug, kind: "knowledge", icon: "📚", text: `${t.steward.name} learned a new doc: ${d.title}.`, link: `/teams/${t.slug}/knowledge` });
     return d;
@@ -562,7 +871,8 @@ const routes: [Method, RegExp, Handler][] = [
     const p = body<{ content?: string; title?: string; label: Label }>(b);
     const content = (p.content ?? g.suggested_answer ?? "").trim();
     if (!content) throw new ApiError(400, "Write an answer first.");
-    const d: KnowledgeDoc = { id: nid("kd"), title: p.title || g.question, source: "Answered in Keel", label: p.label, updated_at: now(), snippet: content.slice(0, 180), chars: content.length };
+    const d = newDoc({ title: p.title || g.question, source: "Answered in Keel", label: p.label, snippet: content.slice(0, 180), chars: content.length });
+    contents[d.id] = content;
     (state.knowledge[slug] ??= []).unshift(d);
     Object.assign(g, { status: "filled", doc_id: d.id, closed_by: user.name, closed_at: now() });
     emit({ team_slug: slug, kind: "knowledge", icon: "📚", text: `${team(slug).steward.name} learned the answer to “${g.question}”.`, link: `/teams/${slug}/knowledge` });
@@ -675,6 +985,7 @@ function progressCheckup(r: CheckupReport): CheckupReport {
 function setupTest(step: SetupStepId, b: Record<string, string>): { ok: boolean; message: string } {
   switch (step) {
     case "admin":
+      if (!state.setup.find((x) => x.id === "admin")?.done && !(b.setup_code ?? "").trim()) return { ok: false, message: "Enter the setup code from the server log." };
       if (!b.email?.includes("@")) return { ok: false, message: "That email address is missing an @." };
       if ((b.password ?? "").length < 12) return { ok: false, message: "Use a password with at least 12 characters." };
       return { ok: true, message: "Looks good." };
@@ -741,7 +1052,7 @@ export const mockTransport: Transport = async (method, path, b) => {
     if (m !== method) continue;
     const match = url.pathname.match(re);
     if (match) {
-      const open = /^\/api\/(me|auth|setup)/.test(url.pathname);
+      const open = /^\/api\/(me|auth|setup|invite\/)/.test(url.pathname);
       if (!open && localStorage.getItem(SIGNED_OUT_KEY)) throw new ApiError(401, "Sign in to continue.");
       return clone(await h(match, b, url));
     }

@@ -18,7 +18,7 @@ from langchain_core import language_models
 from langchain_core import tools as lc_tools
 from sqlalchemy import orm
 
-from keel import brain, feed, gateway, knowledge, labels, learning, ledger, llm, models
+from keel import brain, config, feed, gateway, knowledge, labels, learning, ledger, llm, models
 
 log = logging.getLogger(__name__)
 
@@ -86,16 +86,23 @@ def say(
     label: str = "internal",
     extra: dict[str, typing.Any] | None = None,
     context: str | None = None,
+    channel: str | None = None,
+    channel_label_text: str | None = None,
+    audience_kind: str = "team",
 ) -> models.Operation | None:
     """Propose a message in the team's channel through the gateway. None when the team has no channel.
 
     ``context`` is the message being answered; if a person edits or rejects the draft, the lesson keeps it.
+    ``channel`` sends it somewhere else instead (a DM with the person who asked), labelled ``channel_label_text``.
     """
     org = session.get(models.Org, team.org_id)
     demo = bool(org and org.settings.get("demo"))
-    if not team.slack_channel_id and not demo:
+    if not channel and not team.slack_channel_id and not demo:
         return None
-    payload: dict[str, typing.Any] = {"channel": team.slack_channel_id or f"sim-{team.slug}", "text": text}
+    payload: dict[str, typing.Any] = {
+        "channel": channel or team.slack_channel_id or f"sim-{team.slug}",
+        "text": text,
+    }
     if thread_ts:
         payload["thread_ts"] = thread_ts
     payload.update(extra or {})
@@ -104,13 +111,13 @@ def say(
         gateway.Proposal(
             team=team,
             kind=kind,
-            target=team.slack_channel_name or f"#{team.slug}",
+            target=channel_label_text or team.slack_channel_name or f"#{team.slug}",
             payload=payload,
             summary=text.splitlines()[0][:200],
             op_id=op_id,
             label=label,
-            audience_kind="team",
-            audience=channel_label(team),
+            audience_kind=audience_kind,
+            audience=channel_label_text or channel_label(team),
             commitment=commitment,
             idempotent=False,
             context=context,
@@ -190,11 +197,17 @@ def handle_message(
     directed: bool = False,
     channel: str | None = None,
     in_thread: bool = False,
+    reply_channel: str | None = None,
+    reply_label: str | None = None,
+    mention: str | None = None,
+    clearance: str | None = None,
 ) -> Handled:
     """Triage one channel message and act on it. ``directed`` = the steward was @-mentioned or DM'd.
 
     ``channel`` and ``in_thread`` let a teammate's reply under an open question become its suggested answer.
     The team's lessons shape triage and answers (see :mod:`keel.learning`).
+    ``reply_channel`` answers in a DM instead of the team channel; ``mention`` (a Slack user id) is tagged in
+    replies that can't sit under the message (slash commands); ``clearance`` caps what a DM answer may cite.
     """
     steward = gateway.steward_for(session, team.id)
     thread_ref = f"{channel}:{thread_ts}" if channel and thread_ts else None
@@ -270,8 +283,10 @@ def handle_message(
         else:
             handled.reply = f"I can't find {t.commitment_key}." if c is None else None
     elif t.kind == "question" and directed:
-        found = knowledge.search(session, [team.id], text, labels.audience_max_for_target("team"))
-        handled.reply = learning.answer(
+        found = knowledge.search(
+            session, [team.id], text, clearance or labels.audience_max_for_target("team")
+        )
+        answer = learning.answer(
             session,
             team,
             model,
@@ -281,19 +296,39 @@ def handle_message(
             asked_by=person or "",
             thread_ref=thread_ref,
             lessons=learning.render(lessons),
-        ).text
+        )
+        handled.reply = answer.text
+        if answer.gap is None:
+            handled.reply += source_footer(found.passages, team)
     if handled.reply and (directed or handled.commitment is not None or handled.outcome == "crossteam"):
         say(
             session,
             team,
-            handled.reply,
+            f"<@{mention}> {handled.reply}" if mention else handled.reply,
             op_id=f"{source_ref}:reply",
             kind="slack.reply_thread",
             thread_ts=thread_ts,
             commitment=handled.commitment,
             context=text,
+            channel=reply_channel,
+            channel_label_text=reply_label,
+            audience_kind="org"
+            if clearance and clearance != labels.audience_max_for_target("team")
+            else "team",
         )
     return handled
+
+
+SOURCE_LINKS = 3  # Enough to check the answer; more turns a reply into a reading list.
+
+
+def source_footer(passages: list[knowledge.Passage], team: models.Team) -> str:
+    """'Sources: <link|title> · …' in Slack's link format, one per doc. Empty when nothing was cited."""
+    seen: dict[str, str] = {}
+    for p in passages:
+        if p.doc_id not in seen and len(seen) < SOURCE_LINKS:
+            seen[p.doc_id] = f"<{knowledge.link(p, team.slug, config.get().base_url)}|{p.title}>"
+    return f"\n\nSources: {' · '.join(seen.values())}" if seen else ""
 
 
 def process_inbox(event_id: str, session: orm.Session) -> str:
@@ -309,6 +344,17 @@ def process_inbox(event_id: str, session: orm.Session) -> str:
         return ev.outcome
     model = llm.for_org(session, ev.org_id)
     parent = p.get("thread_ts")
+    in_thread = bool(parent) and parent != p.get("ts")
+    is_dm = ev.source == "slack" and (p.get("channel") or "").startswith("D")
+    asker = (
+        session.scalar(
+            sa.select(models.User).where(
+                models.User.org_id == ev.org_id, models.User.slack_user_id == p.get("user")
+            )
+        )
+        if is_dm and p.get("user")
+        else None
+    )
     res = handle_message(
         session,
         team,
@@ -317,11 +363,15 @@ def process_inbox(event_id: str, session: orm.Session) -> str:
         person=p.get("user_name") or p.get("user"),
         source_kind=ev.source,
         source_url=p.get("permalink"),
-        thread_ts=p.get("thread_ts") or p.get("ts"),
+        thread_ts=(parent if in_thread else None) if is_dm else (p.get("thread_ts") or p.get("ts")),
         model=model,
         directed=bool(p.get("directed")),
         channel=p.get("channel"),
-        in_thread=bool(parent) and parent != p.get("ts"),
+        in_thread=in_thread,
+        reply_channel=p.get("channel") if is_dm else None,
+        reply_label=f"DM with {p.get('user_name') or 'a teammate'}" if is_dm else None,
+        mention=p.get("user") if ev.source == "slack" and not p.get("ts") and not is_dm else None,
+        clearance=clearance_for(session, asker, team) if is_dm else None,
     )
     ev.processed_at, ev.outcome = models.utcnow(), res.outcome
     feed.INBOX_EVENTS.labels(source=ev.source, result=res.outcome).inc()

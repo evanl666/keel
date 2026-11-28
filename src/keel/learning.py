@@ -54,20 +54,13 @@ BM25_K1, BM25_B = 1.2, 0.75  # Standard BM25 constants, same as knowledge search
 WEEK = dt.timedelta(days=7)
 TREND_WINDOW = dt.timedelta(days=30)  # Matches the promotion window, so the two numbers agree.
 
-_ASCII_TERM = re.compile(r"[a-z0-9][a-z0-9_\-]*")
-_CJK_RUN = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]+")
-
 
 def terms(text: str) -> list[str]:
     """Words for matching: ASCII words minus stopwords, plus character pairs for Chinese, Japanese, Korean.
 
     Accepts any string; returns [] for empty or punctuation-only text. A single CJK character counts as a term.
     """
-    low = text.lower()
-    out = [t for t in _ASCII_TERM.findall(low) if t not in knowledge.STOPWORDS]
-    for run in _CJK_RUN.findall(low):
-        out += [run] if len(run) == 1 else [run[i : i + 2] for i in range(len(run) - 1)]
-    return out
+    return knowledge.tokenize(text)
 
 
 def similarity(a: str, b: str) -> float:

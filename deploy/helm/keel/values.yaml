@@ -24,7 +24,7 @@ database:
 postgres:
   enabled: false
   image: postgres:16-alpine
-  password: ""
+  password: ""       # required when enabled: any long random string (it stays inside the cluster)
   storage: 10Gi
   storageClass: ""
 
@@ -36,9 +36,22 @@ web:
 
 worker:
   replicas: 2
+  metricsPort: 9464  # Prometheus /metrics on each worker pod (0 = off); web pods serve /metrics on 8420.
   resources:
     requests: {cpu: 100m, memory: 256Mi}
     limits: {memory: 1Gi}
+
+# Adds prometheus.io/scrape annotations to web and worker pods.
+metrics:
+  annotations: true
+
+# Nightly `keel backup` into a PersistentVolumeClaim. Restore: see docs/backup.md.
+backup:
+  enabled: false
+  schedule: "17 3 * * *"
+  keep: 14           # newest dumps kept
+  storage: 20Gi
+  storageClass: ""
 
 service:
   type: ClusterIP

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import type { CrossTeamEdge, TeamSummary } from "../api/types";
-import { alpha } from "../lib/utils";
 
 const W = 560;
 const H = 320;
@@ -20,18 +19,10 @@ export function TeamGraph({ teams, edges }: { teams: TeamSummary[]; edges: Cross
     const a = -Math.PI / 2 + (i / Math.max(1, teams.length)) * Math.PI * 2;
     pos[t.slug] = { x: cx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry };
   });
-  const byslug = Object.fromEntries(teams.map((t) => [t.slug, t]));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img" aria-label="Open requests between teams">
       <defs>
-        {teams.map((t) => (
-          <radialGradient key={t.slug} id={`node-${t.slug}`} cx="35%" cy="30%" r="75%">
-            <stop offset="0" stopColor={t.color} stopOpacity="0.6" />
-            <stop offset="0.7" stopColor={t.color} stopOpacity="0.16" />
-            <stop offset="1" stopColor={t.color} stopOpacity="0.1" />
-          </radialGradient>
-        ))}
         <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0,1 L9,5 L0,9 z" fill="var(--faint)" />
         </marker>
@@ -65,11 +56,10 @@ export function TeamGraph({ teams, edges }: { teams: TeamSummary[]; edges: Cross
         const lw = label.length * 6.1 + 16;
         return (
           <motion.g key={`${e.from_team}-${e.to_team}`} initial={{ opacity: 0 }} animate={{ opacity: dim ? 0.18 : 1 }} transition={{ delay: 0.15 + i * 0.08 }}>
-            <path d={d} fill="none" stroke={stroke} strokeOpacity={risky ? 0.35 : 1} strokeWidth={1 + Math.min(e.open, 4) * 0.6} markerEnd={`url(#${risky ? "arrow-risk" : "arrow"})`} />
-            <path d={d} fill="none" stroke={risky ? "var(--bad)" : alpha(byslug[e.from_team]?.color ?? "#888", 0.9)} strokeWidth={1.6} className="flow" strokeLinecap="round" />
+            <path d={d} fill="none" stroke={stroke} strokeWidth={1 + Math.min(e.open, 4) * 0.4} markerEnd={`url(#${risky ? "arrow-risk" : "arrow"})`} />
             <g transform={`translate(${mid.x - lw / 2},${mid.y - 10})`}>
-              <rect width={lw} height={20} rx={10} fill="var(--panel)" stroke={risky ? "color-mix(in srgb, var(--bad) 45%, transparent)" : "var(--line-strong)"} />
-              <text x={lw / 2} y={13.5} textAnchor="middle" fontSize="11" fontWeight={500} fill={risky ? "var(--bad)" : "var(--muted)"}>
+              <rect width={lw} height={20} rx={6} fill={risky ? "var(--bad-soft)" : "var(--panel)"} stroke={risky ? "none" : "var(--line)"} />
+              <text x={lw / 2} y={13.5} textAnchor="middle" fontSize="12" fontWeight={500} fill={risky ? "var(--bad)" : "var(--muted)"}>
                 {label}
               </text>
             </g>
@@ -85,23 +75,23 @@ export function TeamGraph({ teams, edges }: { teams: TeamSummary[]; edges: Cross
         return (
           <motion.g
             key={t.slug}
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: hover && hover !== t.slug ? 0.75 : 1, scale: 1 }}
-            transition={{ delay: i * 0.08, type: "spring", stiffness: 260, damping: 20 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: hover && hover !== t.slug ? 0.6 : 1 }}
+            transition={{ delay: i * 0.05, duration: 0.15 }}
             style={{ transformOrigin: `${p.x}px ${p.y}px`, cursor: "pointer" }}
             onMouseEnter={() => setHover(t.slug)}
             onMouseLeave={() => setHover(null)}
             onClick={() => nav(`/teams/${t.slug}`)}
           >
-            <circle cx={p.x} cy={p.y} r={R + 10} fill={alpha(t.color, 0.07)} />
-            <circle cx={p.x} cy={p.y} r={R} fill={`url(#node-${t.slug})`} stroke={alpha(t.color, 0.6)} strokeWidth={1.2} />
+            <circle cx={p.x} cy={p.y} r={R} fill="var(--panel)" stroke={hover === t.slug ? "var(--muted)" : "var(--line-strong)"} strokeWidth={1} />
+            <circle cx={p.x + R * 0.72} cy={p.y - R * 0.72} r={4.5} fill={t.color} stroke="var(--panel)" strokeWidth={2} />
             <text x={p.x} y={p.y + 9} textAnchor="middle" fontSize="26" style={{ filter: t.steward.paused ? "grayscale(1)" : undefined }}>
               {t.steward.emoji}
             </text>
-            <text x={p.x} y={ny1} textAnchor="middle" fontSize="12.5" fontWeight={600} fill="var(--fg)">
+            <text x={p.x} y={ny1} textAnchor="middle" fontSize="13" fontWeight={600} fill="var(--fg)">
               {t.name}
             </text>
-            <text x={p.x} y={ny2} textAnchor="middle" fontSize="11" fill="var(--faint)">
+            <text x={p.x} y={ny2} textAnchor="middle" fontSize="12" fill="var(--muted)">
               {t.steward.name} · {t.counts.requests_in} in · {t.counts.requests_out} out
             </text>
           </motion.g>

@@ -11,8 +11,13 @@ import type {
   CommitmentFilters,
   CreateCommitmentBody,
   CreateTeamBody,
+  CreateInviteBody,
   Gap,
+  Invite,
+  InviteInfo,
   KnowledgeDoc,
+  KnowledgeDocFull,
+  KnowledgeSource,
   Label,
   LearningInfo,
   Lesson,
@@ -20,6 +25,12 @@ import type {
   LevelInfo,
   LoginBody,
   Me,
+  Member,
+  PatchKnowledgeBody,
+  PatchTeamBody,
+  Person,
+  OrgRole,
+  TeamRole,
   OkMessage,
   PromiseReport,
   Operation,
@@ -129,6 +140,7 @@ function q(params: Record<string, string | undefined | null>) {
 const get = <T,>(path: string) => transport("GET", path) as Promise<T>;
 const post = <T,>(path: string, body?: unknown) => transport("POST", path, body ?? {}) as Promise<T>;
 const patch = <T,>(path: string, body: unknown) => transport("PATCH", path, body) as Promise<T>;
+const del = <T,>(path: string) => transport("DELETE", path) as Promise<T>;
 const enc = encodeURIComponent;
 
 export const api = {
@@ -145,6 +157,21 @@ export const api = {
   teams: () => get<TeamSummary[]>("/api/teams"),
   createTeam: (body: CreateTeamBody) => post<TeamSummary>("/api/teams", body),
   team: (slug: string) => get<TeamDetail>(`/api/teams/${enc(slug)}`),
+  patchTeam: (slug: string, body: PatchTeamBody) => patch<TeamDetail>(`/api/teams/${enc(slug)}`, body),
+  deleteTeam: (slug: string) => del<OkMessage>(`/api/teams/${enc(slug)}${q({ confirm: slug })}`),
+  members: (slug: string) => get<Member[]>(`/api/teams/${enc(slug)}/members`),
+  addMember: (slug: string, body: { email: string; role: TeamRole }) => post<Member>(`/api/teams/${enc(slug)}/members`, body),
+  patchMember: (slug: string, userId: string, role: TeamRole) => patch<Member>(`/api/teams/${enc(slug)}/members/${enc(userId)}`, { role }),
+  removeMember: (slug: string, userId: string) => del<OkMessage>(`/api/teams/${enc(slug)}/members/${enc(userId)}`),
+
+  people: () => get<Person[]>("/api/people"),
+  patchPerson: (id: string, body: { role?: OrgRole; disabled?: boolean }) => patch<Person>(`/api/people/${enc(id)}`, body),
+  removePerson: (id: string) => del<OkMessage>(`/api/people/${enc(id)}`),
+  invites: () => get<Invite[]>("/api/invites"),
+  createInvite: (body: CreateInviteBody) => post<{ invite: Invite; url: string }>("/api/invites", body),
+  revokeInvite: (id: string) => del<OkMessage>(`/api/invites/${enc(id)}`),
+  invite: (token: string) => get<InviteInfo>(`/api/invite/${enc(token)}`),
+  acceptInvite: (token: string, body: { name: string; password: string }) => post<OkMessage>(`/api/invite/${enc(token)}`, body),
   patchSteward: (slug: string, body: PatchStewardBody) => patch<StewardSummary>(`/api/teams/${enc(slug)}/steward`, body),
   level: (slug: string) => get<LevelInfo>(`/api/teams/${enc(slug)}/level`),
   setLevel: (slug: string, level: Level, reason: string) => post<LevelInfo>(`/api/teams/${enc(slug)}/level`, { level, reason }),
@@ -163,8 +190,17 @@ export const api = {
   resolveOperation: (id: string, outcome: ResolveOutcome) => post<Operation>(`/api/operations/${enc(id)}/resolve`, { outcome }),
 
   knowledge: (slug: string) => get<KnowledgeDoc[]>(`/api/teams/${enc(slug)}/knowledge`),
-  addKnowledge: (slug: string, body: { title: string; content: string; label: Label; source?: string }) =>
+  addKnowledge: (slug: string, body: { title: string; content: string; label: Label; source?: string; review_by?: string }) =>
     post<KnowledgeDoc>(`/api/teams/${enc(slug)}/knowledge`, body),
+  knowledgeDoc: (slug: string, id: string) => get<KnowledgeDocFull>(`/api/teams/${enc(slug)}/knowledge/${enc(id)}`),
+  patchKnowledge: (slug: string, id: string, body: PatchKnowledgeBody) => patch<KnowledgeDoc>(`/api/teams/${enc(slug)}/knowledge/${enc(id)}`, body),
+  deleteKnowledge: (slug: string, id: string) => del<OkMessage>(`/api/teams/${enc(slug)}/knowledge/${enc(id)}`),
+  reviewedKnowledge: (slug: string, id: string) => post<KnowledgeDoc>(`/api/teams/${enc(slug)}/knowledge/${enc(id)}/reviewed`),
+  knowledgeSources: (slug: string) => get<KnowledgeSource[]>(`/api/teams/${enc(slug)}/knowledge-sources`),
+  addKnowledgeSource: (slug: string, body: { kind: KnowledgeSource["kind"]; target: string; label: Label }) =>
+    post<KnowledgeSource>(`/api/teams/${enc(slug)}/knowledge-sources`, body),
+  syncKnowledgeSource: (slug: string, id: string) => post<KnowledgeSource>(`/api/teams/${enc(slug)}/knowledge-sources/${enc(id)}/sync`),
+  removeKnowledgeSource: (slug: string, id: string) => del<OkMessage>(`/api/teams/${enc(slug)}/knowledge-sources/${enc(id)}`),
   learning: (slug: string) => get<LearningInfo>(`/api/teams/${enc(slug)}/learning`),
   teach: (slug: string, rule: string) => post<Lesson>(`/api/teams/${enc(slug)}/lessons`, { rule }),
   setLessonActive: (id: string, active: boolean) => patch<Lesson>(`/api/lessons/${enc(id)}`, { active }),
@@ -186,6 +222,7 @@ export const api = {
   sendChat: (slug: string, message: string) => post<ChatMessage[]>(`/api/teams/${enc(slug)}/chat`, { message }),
 
   audit: (team?: string) => get<AuditEntry[]>(`/api/audit${q({ team })}`),
+  auditExportUrl: "/api/audit/export?format=csv",
 
   startCheckup: (repo: string) => post<CheckupReport>("/api/checkups", { repo }),
   checkup: (id: string) => get<CheckupReport>(`/api/checkups/${enc(id)}`),

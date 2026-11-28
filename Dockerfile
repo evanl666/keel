@@ -21,7 +21,8 @@ RUN uv sync --frozen --no-dev --extra all
 FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 keel
+    && useradd --create-home --uid 10001 keel \
+    && mkdir /backups && chown keel:keel /backups
 COPY --from=build --chown=keel:keel /app /app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 KEEL_HOST=0.0.0.0 KEEL_PORT=8420
 USER keel

@@ -1,4 +1,4 @@
-# Keel REST API (v0.1)
+# Keel REST API (v0.2)
 
 All endpoints live under `/api`, take and return JSON, and use a session cookie
 (`keel_session`). Times are ISO-8601 UTC strings. Errors return
@@ -114,9 +114,21 @@ interface LevelInfo {
   history: { at: string; from: Level; to: Level; reason: string; actor: string }[];
 }
 
-interface KnowledgeDoc { id: string; title: string; source: string; label: Label; updated_at: string; snippet: string; chars: number; }
+interface KnowledgeDoc {
+  id: string; title: string; source: string; label: Label; updated_at: string; snippet: string; chars: number;
+  origin: "manual" | "file" | "url" | "github" | "slack";
+  source_url: string | null;        // link to the original, when there is one
+  review_by: string | null;         // YYYY-MM-DD
+  stale: boolean;                   // review_by has passed
+  sync_id: string | null;           // set when a KnowledgeSource owns the doc (read-only then)
+}
+interface KnowledgeSource {
+  id: string; kind: "url" | "github"; target: string;   // a URL, or "owner/repo[/path/to/dir]"
+  label: Label; last_synced_at: string | null;
+  status: "pending" | "ok" | "error"; status_line: string; docs: number;
+}
 interface AskResult {
-  answer: string; label: Label; sources: { title: string; source: string; label: Label }[];
+  answer: string; label: Label; sources: { title: string; source: string; label: Label; url: string | null }[];
   withheld: number;                 // sources hidden because the audience can't see them
   open_question: boolean;           // true when the notes had no answer and the question was logged for the team
 }
@@ -159,6 +171,30 @@ interface Service {
 
 interface Brief { id: string; team_slug: string; kind: "daily" | "weekly" | "checkup"; created_at: string; title: string; markdown: string; }
 
+// People. Org role: "org_admin" | "member". Team role: "admin" | "member".
+interface Person {
+  id: string; name: string; email: string; role: "org_admin" | "member"; avatar_url: string | null;
+  disabled: boolean; sso: boolean;  // sso = signed up through SSO, no password
+  slack_linked: boolean; github_login: string | null;
+  teams: { slug: string; name: string; role: "admin" | "member" }[];
+  created_at: string; last_seen_at: string | null;
+}
+interface Invite {
+  id: string; email: string; role: "org_admin" | "member";
+  teams: { slug: string; name: string; role: "admin" | "member" }[];
+  invited_by: string; created_at: string; expires_at: string;
+  status: "pending" | "accepted" | "expired" | "revoked";
+}
+interface Member { user_id: string; name: string; email: string; role: "admin" | "member"; avatar_url: string | null }
+interface TeamSettings {
+  slack_channel: string | null;     // "#payments" or a channel id
+  slack_channel_id: string | null;  // the resolved id; null until Keel finds the channel
+  slack_connected: boolean;
+  github_repos: string[]; timezone: string; brief_hour: number;
+  sso_groups: string[];             // IdP groups whose members join this team on SSO sign-in
+}
+type OkMessage = { ok: boolean; message: string };
+
 interface AuditEntry { id: string; at: string; actor: string; action: string; target: string; detail: string; team_slug: string | null; }
 
 interface ChatMessage { role: "user" | "steward"; text: string; at: string; sources?: AskResult["sources"]; actions?: { kind: string; text: string; link: string | null }[]; }
@@ -180,17 +216,31 @@ interface CheckupReport {
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | GET | /api/me | | Me |
-| POST | /api/auth/login | {email, password} | Me |
+| POST | /api/auth/login | {email, password} | Me — 429 after 5 failures: "Too many tries. Wait N minutes and try again." |
 | POST | /api/auth/logout | | {ok} |
 | GET | /api/auth/sso | | 302 to the IdP |
-| GET | /api/setup | | {steps: SetupStep[], slack_manifest_url: string} |
+| GET | /api/setup | | {steps: SetupStep[], slack_manifest_url: string, needs_setup_code: boolean} |
 | POST | /api/setup/{step} | step-specific JSON (see below) | {ok, message} |
 | POST | /api/setup/{step}/test | same JSON | {ok, message} — message is one plain line |
 | GET | /api/setup/slack-manifest | | YAML file |
 | GET | /api/overview | | Overview |
 | GET | /api/teams | | TeamSummary[] |
 | POST | /api/teams | {name, slug?, steward_name?, emoji?, color?} | TeamSummary |
-| GET | /api/teams/{slug} | | TeamSummary & {today: Brief \| null, activity: ActivityItem[]} |
+| GET | /api/teams/{slug} | | TeamSummary & {today: Brief \| null, activity: ActivityItem[], settings: TeamSettings, my_role: "admin" \| "member" \| null} |
+| PATCH | /api/teams/{slug} | {name?, slack_channel?, github_repos?, timezone?, brief_hour?, sso_groups?} | team detail — team or org admin |
+| DELETE | /api/teams/{slug}?confirm={slug} | | OkMessage — org admin; the audit log is kept |
+| GET | /api/teams/{slug}/members | | Member[] |
+| POST | /api/teams/{slug}/members | {email, role} | Member — the person must already have an account (404 otherwise: invite them) |
+| PATCH | /api/teams/{slug}/members/{user_id} | {role} | Member |
+| DELETE | /api/teams/{slug}/members/{user_id} | | OkMessage — 409 for the team's last admin |
+| GET | /api/people | | Person[] — org admin |
+| PATCH | /api/people/{id} | {role?, disabled?} | Person — 409 for yourself or the last admin; disabling signs them out |
+| DELETE | /api/people/{id} | | OkMessage |
+| GET | /api/invites | | Invite[] (newest first) |
+| POST | /api/invites | {email, role, teams: {slug, role}[]} | {invite: Invite, url} — the one-time link, shown once |
+| DELETE | /api/invites/{id} | | OkMessage — withdraws it |
+| GET | /api/invite/{token} | | {email, org, invited_by, teams: string[], status, sso_enabled} — no sign-in needed |
+| POST | /api/invite/{token} | {name, password} | OkMessage and the session cookie — no sign-in needed |
 | PATCH | /api/teams/{slug}/steward | {paused?, name?, emoji?, duties?} | StewardSummary |
 | GET | /api/teams/{slug}/level | | LevelInfo |
 | POST | /api/teams/{slug}/level | {level, reason} | LevelInfo |
@@ -204,7 +254,15 @@ interface CheckupReport {
 | GET | /api/operations?team=&status= | | Operation[] |
 | POST | /api/operations/{id}/resolve | {outcome: "done" \| "retry" \| "cancel"} | Operation |
 | GET | /api/teams/{slug}/knowledge | | KnowledgeDoc[] |
-| POST | /api/teams/{slug}/knowledge | {title, content, label, source?} | KnowledgeDoc |
+| POST | /api/teams/{slug}/knowledge | {title, content, label, source?, review_by?} | KnowledgeDoc |
+| GET | /api/teams/{slug}/knowledge/{id} | | KnowledgeDoc & {content} |
+| PATCH | /api/teams/{slug}/knowledge/{id} | {title?, content?, label?, review_by?} | KnowledgeDoc — 409 for synced docs |
+| DELETE | /api/teams/{slug}/knowledge/{id} | | OkMessage |
+| POST | /api/teams/{slug}/knowledge/{id}/reviewed | | KnowledgeDoc — moves review_by 90 days out |
+| GET | /api/teams/{slug}/knowledge-sources | | KnowledgeSource[] |
+| POST | /api/teams/{slug}/knowledge-sources | {kind, target, label} | KnowledgeSource — first sync runs in the background |
+| POST | /api/teams/{slug}/knowledge-sources/{id}/sync | | KnowledgeSource |
+| DELETE | /api/teams/{slug}/knowledge-sources/{id} | | OkMessage — its docs go too |
 | POST | /api/teams/{slug}/ask | {question} | AskResult |
 | GET | /api/teams/{slug}/learning | | LearningInfo |
 | POST | /api/teams/{slug}/lessons | {rule} | Lesson — teach a rule (team members) |
@@ -218,7 +276,8 @@ interface CheckupReport {
 | POST | /api/teams/{slug}/briefs | {kind: "daily" \| "weekly"} | Brief |
 | GET | /api/teams/{slug}/chat | | ChatMessage[] |
 | POST | /api/teams/{slug}/chat | {message} | ChatMessage[] (the new steward replies) |
-| GET | /api/audit?team= | | AuditEntry[] |
+| GET | /api/audit?team= | | AuditEntry[] — org admins see all; others only their teams |
+| GET | /api/audit/export?format=csv\|json&since=YYYY-MM-DD | | file download (JSON lines for json) — org admin |
 | POST | /api/checkups | {repo: "owner/name"} | CheckupReport (status running) |
 | GET | /api/checkups/{id} | | CheckupReport |
 | GET | /api/checkups | | CheckupReport[] |
@@ -227,7 +286,8 @@ interface CheckupReport {
 | GET | /healthz, /readyz, /metrics | | probes and Prometheus metrics (no /api prefix) |
 
 Setup step bodies:
-- admin: {name, email, password, org_name}
+- admin: {name, email, password, org_name, setup_code} — setup_code is printed in the server log at startup
+  (`keel setup-code` prints it too); not needed in demo mode
 - model: {provider: "anthropic" | "openai" | "azure_openai" | "ollama" | "claude_code" | "replay", model, api_key?, base_url?}
 - slack: {bot_token, app_token, signing_secret?}
 - github: {token} or {app_id, private_key, installation_id}
