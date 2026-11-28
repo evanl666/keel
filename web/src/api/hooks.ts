@@ -21,6 +21,12 @@ export const qk = {
   checkups: ["checkups"] as const,
   checkup: (id: string) => ["checkup", id] as const,
   setup: ["setup"] as const,
+  people: ["people"] as const,
+  invites: ["invites"] as const,
+  invite: (token: string) => ["invite", token] as const,
+  members: (slug: string) => ["members", slug] as const,
+  knowledgeDoc: (slug: string, id: string) => ["knowledge-doc", slug, id] as const,
+  knowledgeSources: (slug: string) => ["knowledge-sources", slug] as const,
   checkupSvg: (id: string, kind: "badge" | "card") => ["checkup-svg", id, kind] as const,
   promises: (repo: string, days: number) => ["promises", repo, days] as const,
   wrapped: (slug: string, days: number) => ["wrapped", slug, days] as const,
@@ -82,6 +88,24 @@ export const useWrapped = (slug: string, days = 30, enabled = true) =>
 export const useWrappedCard = (slug: string, days = 30, enabled = true) =>
   useQuery({ queryKey: qk.wrappedCard(slug, days), queryFn: () => api.wrappedCard(slug, days), enabled, staleTime: 5 * 60_000, refetchOnWindowFocus: false });
 export const useSetup = () => useQuery({ queryKey: qk.setup, queryFn: api.setup });
+export const usePeople = () => useQuery({ queryKey: qk.people, queryFn: api.people });
+export const useInvites = () => useQuery({ queryKey: qk.invites, queryFn: api.invites });
+export const useInviteInfo = (token: string) => useQuery({ queryKey: qk.invite(token), queryFn: () => api.invite(token), retry: false });
+export const useMembers = (slug: string) => useQuery({ queryKey: qk.members(slug), queryFn: () => api.members(slug) });
+export const useKnowledgeDoc = (slug: string, id: string | null) =>
+  useQuery({ queryKey: qk.knowledgeDoc(slug, id ?? ""), queryFn: () => api.knowledgeDoc(slug, id!), enabled: !!id });
+export const useKnowledgeSources = (slug: string) =>
+  useQuery({
+    queryKey: qk.knowledgeSources(slug),
+    queryFn: () => api.knowledgeSources(slug),
+    refetchInterval: (q) => (q.state.data?.some((s) => s.status === "pending") ? 1500 : false),
+  });
+
+/** Invalidate queries whose key starts with one of these names. */
+export function useInvalidate() {
+  const qc = useQueryClient();
+  return (...names: string[]) => qc.invalidateQueries({ predicate: (q) => names.includes(q.queryKey[0] as string) });
+}
 
 /** Invalidate everything that summarises state; cheap enough for this app's size. */
 export function useRefreshAll() {

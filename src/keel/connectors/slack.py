@@ -94,7 +94,13 @@ def test_credentials(bot_token: str, app_token: str = "") -> tuple[bool, str]:
     try:
         auth = client.auth_test()
     except slack_errors.SlackApiError as exc:
-        return False, errors.classify_slack(exc.response.get("error", "unknown_error")).line
+        code = exc.response.get("error", "unknown_error")
+        if code in errors.SLACK_AUTH_ERRORS:
+            return False, (
+                f"Slack didn't accept that bot token ({code}). Copy the xoxb- token from "
+                "OAuth & Permissions after installing the app to your workspace."
+            )
+        return False, errors.classify_slack(code).line
     except Exception as exc:
         return False, f"Couldn't reach Slack ({type(exc).__name__})."
     if app_token and not app_token.startswith("xapp-"):

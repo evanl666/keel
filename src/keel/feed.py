@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 import prometheus_client
+import sqlalchemy as sa
 from sqlalchemy import orm
 
 from keel import models
@@ -50,3 +53,18 @@ def audit(
             org_id=org_id, team_id=team_id, actor=actor, action=action, target=target, detail=detail
         )
     )
+
+
+def prune_audit(session: orm.Session, keep_days: int) -> int:
+    """Delete audit rows older than ``keep_days`` (0 keeps everything). The one sanctioned deletion."""
+    if keep_days <= 0:
+        return 0
+    cutoff = models.utcnow() - dt.timedelta(days=keep_days)
+    n = session.execute(sa.delete(models.AuditLog).where(models.AuditLog.at < cutoff)).rowcount or 0
+    if n:
+        audit(session, _org_id(session), "keel", "audit.pruned", f"{n} rows", f"older than {keep_days} days")
+    return n
+
+
+def _org_id(session: orm.Session) -> str:
+    return session.scalar(sa.select(models.Org.id).order_by(models.Org.created_at)) or ""

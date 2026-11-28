@@ -2,31 +2,31 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Check, Copy, Download, ExternalLink, GitBranch, Loader2, Stethoscope } from "lucide-react";
+import { ArrowRight, Check, Copy, Download, ExternalLink, GitBranch, Handshake, Hourglass, Loader2, ShieldCheck, Stethoscope } from "lucide-react";
 import { api, errorLine } from "../api/client";
 import { qk, useCheckup, useCheckupSvg, useCheckups } from "../api/hooks";
 import type { CheckupFinding, CheckupReport } from "../api/types";
-import { Button, Card, ErrorLine, Input, Skeleton } from "../components/ui";
+import { Badge, Button, Card, ErrorLine, Input, PageHeader, Skeleton } from "../components/ui";
 import { Ring } from "../components/keel";
 import { useToast } from "../components/toast";
 import { copyText, downloadText, fileSlug, svgDataUrl } from "../lib/share";
 import { ago } from "../lib/time";
 import { cn } from "../lib/utils";
 
-const SEV: Record<CheckupFinding["severity"], { label: string; color: string; line: string }> = {
-  high: { label: "Fix first", color: "var(--t-red)", line: "These cost you the most right now." },
-  medium: { label: "Worth a look", color: "var(--t-amber)", line: "Small changes, noticeable relief." },
-  low: { label: "Tidy up", color: "var(--t-blue)", line: "When you have a quiet afternoon." },
+const SEV: Record<CheckupFinding["severity"], { label: string; color: string; tone: "bad" | "warn" | "neutral"; line: string }> = {
+  high: { label: "Fix first", color: "var(--bad)", tone: "bad", line: "These cost you the most right now." },
+  medium: { label: "Worth a look", color: "var(--warn)", tone: "warn", line: "Small changes, noticeable relief." },
+  low: { label: "Tidy up", color: "var(--muted)", tone: "neutral", line: "When you have a quiet afternoon." },
 };
 
 const STEPS = ["Reading open issues", "Reading pull requests", "Finding promises in comments", "Checking branch rules and CI", "Scoring"];
 
 function gradeColor(g: string | null) {
   if (!g) return "var(--faint)";
-  if (g.startsWith("A")) return "var(--t-green2)";
-  if (g.startsWith("B")) return "var(--t-indigo)";
-  if (g.startsWith("C")) return "var(--t-amber)";
-  return "var(--t-red)";
+  if (g.startsWith("A")) return "var(--ok)";
+  if (g.startsWith("B")) return "var(--accent)";
+  if (g.startsWith("C")) return "var(--warn)";
+  return "var(--bad)";
 }
 
 const STAT_LABELS: Record<string, string> = {
@@ -65,26 +65,24 @@ function Running({ r }: { r: CheckupReport }) {
   }, [r.created_at]);
   const step = Math.min(STEPS.length - 1, Math.floor(t / 1100));
   return (
-    <Card className="p-5 sm:p-8 overflow-hidden" glow="rgba(123,136,255,0.12)">
-      <div className="flex flex-col sm:flex-row items-center sm:items-center gap-6 sm:gap-8">
-        <div className="relative size-[132px] grid place-items-center shrink-0">
-          <motion.div className="absolute inset-0 rounded-full border-2 border-accent/25 border-t-accent" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.4, ease: "linear" }} />
-          <motion.div className="absolute inset-3 rounded-full border border-accent/15 border-b-accent/60" animate={{ rotate: -360 }} transition={{ repeat: Infinity, duration: 2.6, ease: "linear" }} />
-          <Stethoscope className="size-9 text-accent" />
-        </div>
-        <div className="min-w-0 flex-1 max-sm:w-full">
-          <div className="text-[13px] text-faint font-mono flex items-center gap-1.5">
+    <Card className="p-5 sm:p-6">
+      <div className="flex items-start gap-4">
+        <span className="grid place-items-center size-10 rounded-lg bg-hover text-soft shrink-0">
+          <Stethoscope className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[12px] text-muted font-mono flex items-center gap-1.5">
             <GitBranch className="size-3.5 shrink-0" />
             {r.repo}
           </div>
-          <div className="text-[20px] font-semibold tracking-[-0.02em] mt-1">Taking a look…</div>
+          <div className="text-[16px] font-semibold mt-0.5">Taking a look…</div>
           <div className="mt-4 space-y-2">
             {STEPS.map((s, i) => (
-              <motion.div key={s} initial={{ opacity: 0, x: -6 }} animate={{ opacity: i <= step ? 1 : 0.35, x: 0 }} transition={{ delay: i * 0.05 }} className="flex items-center gap-2.5 text-[13.5px]">
-                <span className={cn("grid place-items-center size-[18px] rounded-full border", i < step ? "bg-ok/15 border-ok/40 text-ok" : i === step ? "border-accent/50 text-accent" : "border-line text-faint")}>
+              <motion.div key={s} initial={{ opacity: 0 }} animate={{ opacity: i <= step ? 1 : 0.45 }} transition={{ duration: 0.15 }} className="flex items-center gap-2.5 text-[14px]">
+                <span className={cn("grid place-items-center size-[18px] rounded-full", i < step ? "bg-ok-soft text-ok" : i === step ? "text-fg" : "border border-line")}>
                   {i < step ? <Check className="size-3" /> : i === step ? <Loader2 className="size-3 animate-spin" /> : null}
                 </span>
-                <span className={i <= step ? "text-fg" : "text-faint"}>{s}</span>
+                <span className={i <= step ? "text-fg" : "text-muted"}>{s}</span>
               </motion.div>
             ))}
           </div>
@@ -126,7 +124,7 @@ function ShareRow({ r }: { r: CheckupReport }) {
   return (
     <div className="px-4 sm:px-6 py-4 border-t border-line flex flex-col md:flex-row md:items-center gap-3">
       <div className="flex items-center gap-3 min-w-0">
-        <span className="text-[13px] font-semibold">Share it</span>
+        <span className="text-[14px] font-medium">Share it</span>
         {badge.data ? <img src={svgDataUrl(badge.data)} alt={`keel checkup ${r.grade} · ${r.score}`} className="h-5 w-auto" /> : <Skeleton className="h-5 w-[120px]" />}
       </div>
       <div className="md:ml-auto flex flex-wrap gap-2">
@@ -149,65 +147,62 @@ function Report({ r }: { r: CheckupReport }) {
   const color = gradeColor(r.grade);
   const groups = (["high", "medium", "low"] as const).map((s) => ({ s, items: r.findings.filter((f) => f.severity === s) })).filter((g) => g.items.length);
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
       <Card className="overflow-hidden">
-        <div className="relative px-5 py-6 sm:px-8 sm:py-7 flex flex-col sm:flex-row items-start sm:items-center gap-5 sm:gap-8 border-b border-line" style={{ backgroundImage: `radial-gradient(70% 140% at 0% 0%, color-mix(in srgb, ${color} 16%, transparent), transparent 60%)` }}>
-          <Ring value={score} size={136} stroke={8} color={color}>
+        <div className="px-5 py-5 sm:px-6 flex flex-col sm:flex-row items-start sm:items-center gap-5 sm:gap-6 border-b border-line">
+          <Ring value={score} size={104} stroke={5} color={color}>
             <div className="text-center">
-              <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 16, delay: 0.25 }} className="text-[52px] leading-none font-bold tracking-[-0.04em]" style={{ color }}>
+              <div className="text-[36px] leading-none font-semibold tracking-[-0.03em]" style={{ color }}>
                 {r.grade}
-              </motion.div>
-              <div className="text-[12px] text-faint tabular mt-1">{score} / 100</div>
+              </div>
+              <div className="text-[12px] text-muted tabular mt-1">{score} / 100</div>
             </div>
           </Ring>
           <div className="min-w-0 flex-1">
-            <a href={`https://github.com/${r.repo}`} target="_blank" rel="noreferrer" className="text-[13px] text-faint font-mono inline-flex items-center gap-1.5 hover:text-fg">
+            <a href={`https://github.com/${r.repo}`} target="_blank" rel="noreferrer" className="text-[12px] text-muted font-mono inline-flex items-center gap-1.5 hover:text-fg">
               <GitBranch className="size-3.5" />
               {r.repo}
               <ExternalLink className="size-3" />
             </a>
-            <div className="text-[20px] sm:text-[22px] font-semibold tracking-[-0.02em] mt-1 leading-tight">{verdict(score)}</div>
+            <div className="text-[16px] font-semibold tracking-[-0.01em] mt-1 leading-snug">{verdict(score)}</div>
             <div className="mt-3 flex items-center gap-2 flex-wrap">
               {groups.map((g) => (
-                <span key={g.s} className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[12px] font-medium border" style={{ color: SEV[g.s].color, borderColor: `color-mix(in srgb, ${SEV[g.s].color} 30%, transparent)`, background: `color-mix(in srgb, ${SEV[g.s].color} 10%, transparent)` }}>
-                  <span className="size-1.5 rounded-full" style={{ background: SEV[g.s].color }} />
+                <Badge key={g.s} tone={SEV[g.s].tone}>
                   {g.items.length} {SEV[g.s].label.toLowerCase()}
-                </span>
+                </Badge>
               ))}
-              <span className="text-[12px] text-faint ml-1">Checked {ago(r.created_at)}</span>
+              <span className="text-[12px] text-muted ml-1">Checked {ago(r.created_at)}</span>
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 border-b border-line">
-          {Object.entries(r.stats).filter(([k]) => k !== "not_checked").map(([k, v], i) => (
-            <motion.div key={k} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }} className="min-w-0 px-4 sm:px-5 py-4 border-r border-t border-line -mt-px">
-              <div className="text-[11px] uppercase tracking-[0.06em] text-faint whitespace-nowrap truncate">{statLabel(k)}</div>
-              <div className="text-[20px] font-semibold tabular tracking-[-0.02em] mt-1">{statValue(k, v)}</div>
-            </motion.div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-line border-b border-line">
+          {Object.entries(r.stats).filter(([k]) => k !== "not_checked").map(([k, v]) => (
+            <div key={k} className="min-w-0 px-4 sm:px-5 py-4 bg-panel">
+              <div className="text-[12px] text-muted whitespace-nowrap truncate">{statLabel(k)}</div>
+              <div className="text-[20px] font-semibold tabular tracking-[-0.01em] mt-0.5">{statValue(k, v)}</div>
+            </div>
           ))}
         </div>
         {r.stats.not_checked ? (
-          <div className="px-4 sm:px-6 pt-4 text-[12.5px] text-faint">Not checked: {String(r.stats.not_checked)}</div>
+          <div className="px-4 sm:px-6 pt-4 text-[12px] text-muted">Not checked: {String(r.stats.not_checked)}</div>
         ) : null}
         <div className="p-4 sm:p-6 space-y-6">
           {groups.map((g, gi) => (
             <div key={g.s}>
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-2.5">
-                <span className="text-[13px] font-semibold" style={{ color: SEV[g.s].color }}>
-                  {SEV[g.s].label}
-                </span>
-                <span className="text-[12.5px] text-faint">{SEV[g.s].line}</span>
+                <span className="text-[14px] font-semibold">{SEV[g.s].label}</span>
+                <span className="text-[12px] text-muted">{SEV[g.s].line}</span>
               </div>
               <div className="rounded-xl border border-line overflow-hidden">
                 {g.items.map((f, i) => (
-                  <motion.div key={f.title} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + gi * 0.12 + i * 0.05 }} className="group flex items-start gap-3 px-4 py-3 border-t border-line first:border-t-0 hover:bg-hover/60 transition-colors">
-                    <span className="mt-[7px] size-2 rounded-full shrink-0" style={{ background: SEV[g.s].color, boxShadow: `0 0 8px ${SEV[g.s].color}` }} />
+                  <motion.div key={f.title} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + gi * 0.06 + i * 0.03, duration: 0.15 }} className="group flex items-start gap-3 px-4 py-3 border-t border-line first:border-t-0 hover:bg-hover transition-colors">
+                    <span className="mt-[7px] size-2 rounded-full shrink-0" style={{ background: SEV[g.s].color }} />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13.5px] font-medium">{f.title}</div>
-                      <div className="text-[12.5px] text-muted mt-0.5 leading-snug">{f.detail}</div>
+                      <div className="text-[14px] font-medium">{f.title}</div>
+                      <div className="text-[12px] text-muted mt-0.5 leading-snug">{f.detail}</div>
                     </div>
                     {f.url && (
-                      <a href={f.url} target="_blank" rel="noreferrer" className="shrink-0 mt-0.5 inline-flex items-center gap-1 text-[12px] text-faint group-hover:text-accent">
+                      <a href={f.url} target="_blank" rel="noreferrer" className="shrink-0 mt-0.5 inline-flex items-center gap-1 text-[12px] text-muted hover:text-fg">
                         Open <ExternalLink className="size-3" />
                       </a>
                     )}
@@ -218,9 +213,9 @@ function Report({ r }: { r: CheckupReport }) {
           ))}
         </div>
         <ShareRow r={r} />
-        <div className="px-4 sm:px-6 py-4 border-t border-line bg-sunken/50 flex items-center gap-3">
-          <span className="text-[20px]">🦉</span>
-          <div className="text-[13px] text-muted flex-1">A steward would turn the untracked promises into ledger entries and nudge owners before they slip.</div>
+        <div className="px-4 sm:px-6 py-4 border-t border-line bg-sunken flex items-center gap-3">
+          <span className="text-[16px]">🦉</span>
+          <div className="text-[14px] text-muted flex-1">A steward would turn the untracked promises into ledger entries and nudge owners before they slip.</div>
         </div>
       </Card>
     </motion.div>
@@ -260,13 +255,11 @@ export function Checkup() {
 
   return (
     <div>
-      <Card className="overflow-hidden mb-6" glow="rgba(123,136,255,0.14)">
-        <div className="px-5 pt-6 pb-6 sm:px-8 sm:pt-8 sm:pb-7">
-          <div className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full border border-accent/30 bg-accent-soft text-accent text-[11.5px] font-medium">
-            <Stethoscope className="size-3.5" /> Team checkup
-          </div>
-          <h1 className="mt-3 text-[24px] sm:text-[28px] font-semibold tracking-[-0.03em] leading-tight">How is your team really doing?</h1>
-          <p className="mt-1.5 text-[14px] text-muted max-w-xl">Point Keel at a GitHub repo. In under a minute you'll see the promises nobody tracks, the reviews that wait, and what a steward would fix first. Read-only.</p>
+      <PageHeader title="Checkup" sub="A read-only look at any GitHub repo, in under a minute." />
+      <Card className="mb-6">
+        <div className="p-5 sm:p-6">
+          <h2 className="text-[16px] font-semibold tracking-[-0.01em]">How is your team really doing?</h2>
+          <p className="mt-1 text-[14px] text-muted max-w-xl">Point Keel at a GitHub repo. In under a minute you'll see the promises nobody tracks, the reviews that wait, and what a steward would fix first. Read-only.</p>
           <form
             className="mt-5 flex flex-col sm:flex-row sm:items-center gap-2 max-w-xl"
             onSubmit={(e) => {
@@ -275,24 +268,24 @@ export function Checkup() {
             }}
           >
             <div className="relative flex-1">
-              <GitBranch className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-faint" />
-              <Input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/repo" className="h-11 pl-9 text-[14.5px] font-mono" aria-label="GitHub repository" />
+              <GitBranch className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted" />
+              <Input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/repo" className="h-9 pl-9 text-[14px] font-mono" aria-label="GitHub repository" />
             </div>
-            <Button type="submit" variant="primary" size="lg" className="h-11" loading={start.isPending} icon={!start.isPending ? <ArrowRight className="size-4" /> : undefined}>
+            <Button type="submit" variant="primary" size="lg" loading={start.isPending} icon={!start.isPending ? <ArrowRight className="size-4" /> : undefined}>
               Run checkup
             </Button>
           </form>
           {err && <ErrorLine error={err} className="mt-3 max-w-xl" />}
           {list && list.length > 0 && (
-            <div className="mt-5 flex items-center gap-2 flex-wrap text-[12.5px]">
-              <span className="text-faint">Recent</span>
+            <div className="mt-5 flex items-center gap-2 flex-wrap text-[12px]">
+              <span className="text-muted">Recent</span>
               {list.filter((c, i) => list.findIndex((x) => x.repo === c.repo) === i).slice(0, 6).map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setParams({ id: c.id })}
-                  className={cn("inline-flex items-center gap-1.5 h-7 max-sm:h-10 max-sm:px-3 px-2.5 rounded-lg border font-mono text-[12px] cursor-pointer transition-colors", c.id === id ? "border-accent/50 bg-accent-soft text-fg" : "border-line bg-panel text-muted hover:text-fg hover:border-line-strong")}
+                  className={cn("inline-flex items-center gap-1.5 h-7 max-sm:h-10 max-sm:px-3 px-2.5 rounded-md font-mono text-[12px] cursor-pointer transition-colors", c.id === id ? "bg-hover text-fg" : "text-muted hover:text-fg hover:bg-hover")}
                 >
-                  {c.status === "running" ? <Loader2 className="size-3 animate-spin text-accent" /> : c.status === "failed" ? <span className="size-1.5 rounded-full bg-bad" /> : <span className="font-sans font-bold text-[12px]" style={{ color: gradeColor(c.grade) }}>{c.grade}</span>}
+                  {c.status === "running" ? <Loader2 className="size-3 animate-spin text-muted" /> : c.status === "failed" ? <span className="size-1.5 rounded-full bg-bad" /> : <span className="font-sans font-semibold text-[12px]" style={{ color: gradeColor(c.grade) }}>{c.grade}</span>}
                   {c.repo}
                 </button>
               ))}
@@ -310,7 +303,7 @@ export function Checkup() {
               <Running r={current} />
             ) : current.status === "failed" ? (
               <Card className="p-6">
-                <div className="text-[13px] text-faint font-mono flex items-center gap-1.5 mb-2">
+                <div className="text-[12px] text-muted font-mono flex items-center gap-1.5 mb-2">
                   <GitBranch className="size-3.5" />
                   {current.repo}
                 </div>
@@ -321,16 +314,16 @@ export function Checkup() {
             )}
           </motion.div>
         ) : (
-          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
-              { e: "🤝", t: "Untracked promises", l: "\"I'll take this\" in issues and PRs, with no date or owner." },
-              { e: "⏳", t: "Waiting work", l: "Reviews and questions that sit for days." },
-              { e: "🛡️", t: "Guard rails", l: "Branch rules, CI health, and who owns what." },
+              { e: <Handshake className="size-4" />, t: "Untracked promises", l: "\"I'll take this\" in issues and PRs, with no date or owner." },
+              { e: <Hourglass className="size-4" />, t: "Waiting work", l: "Reviews and questions that sit for days." },
+              { e: <ShieldCheck className="size-4" />, t: "Guard rails", l: "Branch rules, CI health, and who owns what." },
             ].map((x) => (
               <Card key={x.t} className="p-5">
-                <div className="text-[22px]">{x.e}</div>
-                <div className="text-[14px] font-semibold mt-2">{x.t}</div>
-                <div className="text-[13px] text-muted mt-1">{x.l}</div>
+                <span className="grid place-items-center size-8 rounded-lg bg-hover text-soft">{x.e}</span>
+                <div className="text-[14px] font-semibold mt-3">{x.t}</div>
+                <div className="text-[14px] text-muted mt-1">{x.l}</div>
               </Card>
             ))}
           </motion.div>

@@ -41,28 +41,28 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <motion.div
               key={t.id}
               layout
-              initial={{ opacity: 0, y: 16, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 40, transition: { duration: 0.18 } }}
-              transition={{ type: "spring", stiffness: 420, damping: 32 }}
-              className="pointer-events-auto flex items-start gap-3 rounded-xl border border-line-strong bg-panel/95 backdrop-blur-xl px-3.5 py-3 shadow-pop"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, transition: { duration: 0.15 } }}
+              transition={{ duration: 0.15 }}
+              className="pointer-events-auto flex items-start gap-3 rounded-xl border border-line bg-panel px-3.5 py-3 shadow-pop"
             >
               <span className="mt-px">
                 {t.icon ? (
-                  <span className="text-[15px] leading-none">{t.icon}</span>
+                  <span className="text-[14px] leading-none">{t.icon}</span>
                 ) : t.tone === "ok" ? (
                   <CheckCircle2 className="size-4 text-ok" />
                 ) : t.tone === "bad" ? (
                   <XCircle className="size-4 text-bad" />
                 ) : (
-                  <Info className="size-4 text-info" />
+                  <Info className="size-4 text-accent" />
                 )}
               </span>
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium leading-snug">{t.title}</div>
-                {t.line && <div className={cn("text-[12.5px] mt-0.5 leading-snug", t.tone === "bad" ? "text-bad" : "text-muted")}>{t.line}</div>}
+                <div className="text-[14px] font-medium leading-snug">{t.title}</div>
+                {t.line && <div className={cn("text-[13px] mt-0.5 leading-snug", t.tone === "bad" ? "text-bad" : "text-muted")}>{t.line}</div>}
               </div>
-              <button onClick={() => dismiss(t.id)} className="-m-2 p-2 max-sm:-my-2.5 max-sm:p-3 rounded-lg text-faint hover:text-fg cursor-pointer" aria-label="Dismiss">
+              <button onClick={() => dismiss(t.id)} className="-m-2 p-2 max-sm:-my-2.5 max-sm:p-3 rounded-lg text-muted hover:text-fg cursor-pointer" aria-label="Dismiss">
                 <X className="size-3.5" />
               </button>
             </motion.div>

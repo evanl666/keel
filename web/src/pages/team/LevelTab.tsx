@@ -8,25 +8,23 @@ import { Button, Card, CardHeader, Input, Skeleton } from "../../components/ui";
 import { LevelBadge } from "../../components/keel";
 import { useToast } from "../../components/toast";
 import { ago, fullDate } from "../../lib/time";
-import { alpha, cn } from "../../lib/utils";
-
-const LEVEL_TONES = ["var(--lv0)", "var(--lv1)", "var(--lv2)", "var(--lv3)", "var(--lv4)"];
+import { cn } from "../../lib/utils";
 
 function Meter({ label, value, max, target, fmt, ok }: { label: string; value: number; max: number; target: number; fmt: (n: number) => string; ok: boolean }) {
   const pct = Math.min(100, (value / max) * 100);
   const tpct = Math.min(100, (target / max) * 100);
   return (
     <div>
-      <div className="flex items-baseline justify-between text-[12.5px]">
+      <div className="flex items-baseline justify-between text-[12px]">
         <span className="text-muted">{label}</span>
         <span className="tabular">
-          <b className={cn("text-[15px]", ok ? "text-ok" : "text-fg")}>{fmt(value)}</b>
-          <span className="text-faint"> / {fmt(target)} needed</span>
+          <b className={cn("text-[16px]", ok ? "text-ok" : "text-fg")}>{fmt(value)}</b>
+          <span className="text-muted"> / {fmt(target)} needed</span>
         </span>
       </div>
-      <div className="relative mt-2 h-2 rounded-full bg-sunken border border-line overflow-visible">
-        <motion.div className={cn("h-full rounded-full", ok ? "bg-ok" : "bg-accent")} initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }} />
-        <span className="absolute -top-1 -bottom-1 w-px bg-fg/50" style={{ left: `${tpct}%` }} />
+      <div className="relative mt-2 h-1.5 rounded-full bg-hover overflow-visible">
+        <motion.div className={cn("h-full rounded-full", ok ? "bg-ok" : "bg-fg/70")} initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} />
+        <span className="absolute -top-1 -bottom-1 w-px bg-fg/40" style={{ left: `${tpct}%` }} />
       </div>
     </div>
   );
@@ -73,34 +71,34 @@ export function LevelTab({ t }: { t: TeamDetail }) {
           {[...info.levels].reverse().map((l) => {
             const current = l.level === info.level;
             const below = l.level < info.level;
-            const c = LEVEL_TONES[l.level];
             return (
               <motion.div
                 key={l.level}
                 layout
-                className={cn("relative flex items-center gap-x-4 gap-y-2 max-sm:flex-wrap rounded-xl border px-3.5 sm:px-4 py-3 transition-colors", current ? "border-transparent" : "border-line")}
-                style={current ? { background: `linear-gradient(90deg, ${alpha(c, 0.16)}, ${alpha(c, 0.04)})`, boxShadow: `inset 0 0 0 1px ${alpha(c, 0.45)}` } : undefined}
+                className={cn("relative flex items-center gap-x-4 gap-y-2 max-sm:flex-wrap rounded-lg border px-3.5 sm:px-4 py-3 transition-colors", current ? "border-fg/35 bg-hover/60" : "border-line")}
               >
                 <span
-                  className="grid place-items-center size-9 rounded-lg text-[13px] font-bold tabular shrink-0"
-                  style={{ color: below || current ? c : "var(--faint)", background: below || current ? alpha(c, 0.14) : "var(--sunken)", boxShadow: `inset 0 0 0 1px ${below || current ? alpha(c, 0.35) : "var(--line)"}` }}
+                  className={cn(
+                    "grid place-items-center size-8 rounded-lg text-[13px] font-semibold tabular shrink-0",
+                    current ? "bg-ink text-ink-fg" : below ? "bg-hover text-fg" : "border border-line text-muted",
+                  )}
                 >
                   L{l.level}
                 </span>
                 <div className={cn("min-w-0 flex-1", current && "max-sm:basis-[calc(100%-3.25rem)]")}>
                   <div className={cn("text-[14px] font-semibold", !below && !current && "text-muted")}>{l.name}</div>
-                  <div className="text-[12.5px] text-muted mt-0.5">{l.can}</div>
+                  <div className="text-[12px] text-muted mt-0.5">{l.can}</div>
                 </div>
                 {current ? (
-                  <span className="shrink-0 whitespace-nowrap text-[11.5px] font-semibold px-2 h-6 rounded-full inline-flex items-center gap-1 max-sm:order-last max-sm:ml-[52px]" style={{ color: c, background: alpha(c, 0.14) }}>
-                    <span className="size-1.5 rounded-full live-dot" style={{ background: c, color: c }} /> {t.steward.name} is here
+                  <span className="shrink-0 whitespace-nowrap text-[12px] font-medium inline-flex items-center gap-1.5 text-soft max-sm:order-last max-sm:ml-[48px]">
+                    <span className="size-1.5 rounded-full live-dot bg-ok" /> {t.steward.name} is here
                   </span>
                 ) : below ? (
-                  <Check className="size-4 text-faint" />
+                  <Check className="size-4 text-muted" />
                 ) : info.eligible_for === l.level ? (
-                  <span className="text-[11.5px] font-medium text-ok">Earned</span>
+                  <span className="text-[12px] font-medium text-ok">Earned</span>
                 ) : (
-                  <Lock className="size-3.5 text-faint" />
+                  <Lock className="size-3.5 text-muted" />
                 )}
               </motion.div>
             );
@@ -109,14 +107,14 @@ export function LevelTab({ t }: { t: TeamDetail }) {
       </Card>
 
       <div className="lg:col-span-5 space-y-5">
-        <Card className="p-5" glow={info.eligible_for != null ? "rgba(34,197,94,0.1)" : undefined}>
-          <div className="flex items-center gap-2 text-[13px] font-semibold">
-            <TrendingUp className="size-4 text-accent" />
+        <Card className="p-5">
+          <div className="flex items-center gap-2 text-[14px] font-semibold">
+            <TrendingUp className="size-4 text-muted" />
             {next ? `Toward L${next} ${info.levels.find((l) => l.level === next)?.name}` : "Highest level"}
           </div>
           {next ? (
             <>
-              <p className="text-[12.5px] text-muted mt-1">Drafts approved without edits count toward the next level.</p>
+              <p className="text-[12px] text-muted mt-1">Drafts approved without edits count toward the next level.</p>
               <div className="mt-4 space-y-4">
                 <Meter label="Reviewed drafts" value={info.samples} max={Math.max(info.min_samples, info.samples) * 1.15} target={info.min_samples} fmt={(n) => String(Math.round(n))} ok={samplesOk} />
                 <Meter label="Approved unchanged" value={(rate ?? 0) * 100} max={100} target={info.min_approval_rate * 100} fmt={(n) => `${Math.round(n)}%`} ok={rateOk} />
@@ -135,21 +133,21 @@ export function LevelTab({ t }: { t: TeamDetail }) {
                     </div>
                   </div>
                 ) : (
-                  <Button variant="primary" size="lg" className="mt-5 w-full" icon={<ArrowUp className="size-4" />} onClick={() => setConfirm(info.eligible_for)}>
+                  <Button variant="primary" className="mt-5 w-full" icon={<ArrowUp className="size-4" />} onClick={() => setConfirm(info.eligible_for)}>
                     Promote to L{info.eligible_for}
                   </Button>
                 )
               ) : (
-                <p className="mt-4 text-[12.5px] text-faint">
+                <p className="mt-4 text-[12px] text-muted">
                   {!samplesOk ? `${info.min_samples - info.samples} more reviewed drafts to go.` : `Approval rate needs to reach ${Math.round(info.min_approval_rate * 100)}%.`}
                 </p>
               )}
             </>
           ) : (
-            <p className="text-[12.5px] text-muted mt-1">{t.steward.name} can do everything a steward can.</p>
+            <p className="text-[12px] text-muted mt-1">{t.steward.name} can do everything a steward can.</p>
           )}
           {info.level > 0 && (
-            <button className="mt-4 max-sm:mt-2 max-sm:py-2.5 text-[12px] text-faint hover:text-bad cursor-pointer" onClick={() => change((info.level - 1) as Level)}>
+            <button className="mt-4 max-sm:mt-2 max-sm:py-2.5 text-[12px] text-muted hover:text-bad cursor-pointer" onClick={() => change((info.level - 1) as Level)}>
               Lower to L{info.level - 1}
             </button>
           )}
@@ -162,22 +160,22 @@ export function LevelTab({ t }: { t: TeamDetail }) {
               <ol className="relative border-l border-line ml-2 space-y-4">
                 {[...info.history].reverse().map((h, i) => (
                   <li key={i} className="pl-5 relative">
-                    <span className="absolute -left-[5px] top-1.5 size-2.5 rounded-full border-2 border-panel" style={{ background: LEVEL_TONES[h.to] }} />
-                    <div className="flex items-center gap-1.5 text-[13px]">
+                    <span className={cn("absolute -left-[5px] top-1.5 size-2.5 rounded-full border-2 border-panel", h.to > h.from ? "bg-ok" : "bg-muted")} />
+                    <div className="flex items-center gap-1.5 text-[14px]">
                       <LevelBadge level={h.from} />
-                      <span className="text-faint">→</span>
+                      <span className="text-muted">→</span>
                       <LevelBadge level={h.to} />
-                      <span className="ml-auto text-[11.5px] text-faint" title={fullDate(h.at)}>
+                      <span className="ml-auto text-[12px] text-muted" title={fullDate(h.at)}>
                         {ago(h.at)}
                       </span>
                     </div>
-                    <div className="text-[12.5px] text-muted mt-1">{h.reason}</div>
-                    <div className="text-[11.5px] text-faint mt-0.5">by {h.actor}</div>
+                    <div className="text-[12px] text-muted mt-1">{h.reason}</div>
+                    <div className="text-[12px] text-muted mt-0.5">by {h.actor}</div>
                   </li>
                 ))}
               </ol>
             ) : (
-              <div className="text-[12.5px] text-faint">No changes yet.</div>
+              <div className="text-[12px] text-muted">No changes yet.</div>
             )}
           </div>
         </Card>

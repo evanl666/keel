@@ -6,7 +6,7 @@ import { Check, CircleCheck, Download, ArrowRight, FlaskConical } from "lucide-r
 import { api, errorLine } from "../api/client";
 import { qk, useSetup } from "../api/hooks";
 import type { Level, OkMessage, SetupStep, SetupStepId } from "../api/types";
-import { Button, Card, Field, Input, Segmented, Select, Skeleton, Textarea } from "../components/ui";
+import { Badge, Button, buttonClass, Card, Field, Input, PageHeader, Segmented, Select, Skeleton, Textarea } from "../components/ui";
 import { KeelMark, LevelBadge } from "../components/keel";
 import { useToast } from "../components/toast";
 import { cn, scrollIntoStrip } from "../lib/utils";
@@ -14,7 +14,7 @@ import { cn, scrollIntoStrip } from "../lib/utils";
 type Values = Record<string, string>;
 
 const DEFAULTS: Record<SetupStepId, Values> = {
-  admin: { name: "", email: "", password: "", org_name: "" },
+  admin: { name: "", email: "", password: "", org_name: "", setup_code: "" },
   model: { provider: "anthropic", model: "claude-sonnet-4", api_key: "", base_url: "" },
   slack: { bot_token: "", app_token: "", signing_secret: "" },
   github: { mode: "token", token: "", app_id: "", private_key: "", installation_id: "" },
@@ -66,7 +66,7 @@ function ResultLine({ r }: { r: OkMessage | null }) {
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
-          className={cn("flex items-start gap-2 text-[13px] rounded-lg border px-3 py-2", r.ok ? "text-ok border-ok/25 bg-ok/8" : "text-bad border-bad/25 bg-bad/8")}
+          className={cn("flex items-start gap-2 text-[14px] rounded-lg px-3 py-2", r.ok ? "text-ok bg-ok-soft" : "text-bad bg-bad-soft")}
         >
           {r.ok ? <Check className="size-3.5 mt-[3px] shrink-0" /> : <span className="mt-[6px] size-1.5 rounded-full bg-bad shrink-0" />}
           <span>{r.message}</span>
@@ -76,7 +76,7 @@ function ResultLine({ r }: { r: OkMessage | null }) {
   );
 }
 
-function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values; set: (k: string, val: string) => void; manifestUrl: string }) {
+function StepForm({ step, v, set, manifestUrl, needsCode }: { step: SetupStepId; v: Values; set: (k: string, val: string) => void; manifestUrl: string; needsCode?: boolean }) {
   const inp = (k: string, props: Partial<ComponentProps<typeof Input>> = {}) => <Input value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} {...props} />;
   switch (step) {
     case "admin":
@@ -85,9 +85,22 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
           <Field label="Your name">{inp("name", { placeholder: "Evan Park", autoComplete: "name" })}</Field>
           <Field label="Organization">{inp("org_name", { placeholder: "Acme" })}</Field>
           <Field label="Email">{inp("email", { type: "email", placeholder: "you@company.com", autoComplete: "username" })}</Field>
-          <Field label="Password" hint="At least 12 characters.">
+          <Field label="Password" hint="At least 10 characters.">
             {inp("password", { type: "password", autoComplete: "new-password" })}
           </Field>
+          {needsCode && (
+            <Field
+              label="Setup code"
+              className="sm:col-span-2"
+              hint={
+                <>
+                  Printed in the server log at startup. Or run <code className="font-mono text-soft">keel setup-code</code>.
+                </>
+              }
+            >
+              {inp("setup_code", { placeholder: "XXXX-XXXX", autoComplete: "one-time-code", spellCheck: false, className: "font-mono text-[14px] sm:max-w-[260px]" })}
+            </Field>
+          )}
         </div>
       );
     case "model": {
@@ -110,20 +123,20 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
               ))}
             </Select>
           </Field>
-          <Field label="Model">{inp("model", { className: "font-mono text-[13px]" })}</Field>
+          <Field label="Model">{inp("model", { className: "font-mono text-[14px]" })}</Field>
           {needsKey && (
             <div className="sm:col-span-2">
               <Field label="API key" hint="Stored encrypted on your Keel server. Sent only to the model provider.">
-                {inp("api_key", { type: "password", placeholder: v.provider === "anthropic" ? "sk-ant-…" : "sk-…", className: "font-mono text-[13px]" })}
+                {inp("api_key", { type: "password", placeholder: v.provider === "anthropic" ? "sk-ant-…" : "sk-…", className: "font-mono text-[14px]" })}
               </Field>
             </div>
           )}
           {needsUrl && (
             <div className="sm:col-span-2">
-              <Field label="Base URL">{inp("base_url", { placeholder: v.provider === "ollama" ? "http://localhost:11434" : "https://your-resource.openai.azure.com", className: "font-mono text-[13px]" })}</Field>
+              <Field label="Base URL">{inp("base_url", { placeholder: v.provider === "ollama" ? "http://localhost:11434" : "https://your-resource.openai.azure.com", className: "font-mono text-[14px]" })}</Field>
             </div>
           )}
-          {v.provider === "replay" && <p className="sm:col-span-2 text-[12.5px] text-muted">Replay answers from recorded sessions. Good for trying Keel with no model at all.</p>}
+          {v.provider === "replay" && <p className="sm:col-span-2 text-[12px] text-muted">Replay answers from recorded sessions. Good for trying Keel with no model at all.</p>}
         </div>
       );
     }
@@ -139,25 +152,25 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
                 </a>
               </>,
               <>
-                At <span className="font-mono text-[12.5px]">api.slack.com/apps</span>, choose <b>Create New App → From a manifest</b> and paste it.
+                At <span className="font-mono text-[12px]">api.slack.com/apps</span>, choose <b>Create New App → From a manifest</b> and paste it.
               </>,
               <>Install it to your workspace, then copy the two tokens below.</>,
             ].map((el, i) => (
-              <li key={i} className="flex items-start gap-3 text-[13.5px]">
-                <span className="grid place-items-center size-[22px] rounded-full bg-accent-soft text-accent text-[12px] font-semibold shrink-0">{i + 1}</span>
-                <span className="pt-0.5 text-muted">{el}</span>
+              <li key={i} className="flex items-start gap-3 text-[14px]">
+                <span className="grid place-items-center size-[22px] rounded-full bg-hover text-soft text-[12px] font-semibold shrink-0">{i + 1}</span>
+                <span className="pt-0.5 text-soft">{el}</span>
               </li>
             ))}
           </ol>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Bot token" hint="OAuth & Permissions. Starts with xoxb-.">
-              {inp("bot_token", { placeholder: "xoxb-…", className: "font-mono text-[13px]" })}
+              {inp("bot_token", { placeholder: "xoxb-…", className: "font-mono text-[14px]" })}
             </Field>
             <Field label="App-level token" hint="Basic Information. Starts with xapp-.">
-              {inp("app_token", { placeholder: "xapp-…", className: "font-mono text-[13px]" })}
+              {inp("app_token", { placeholder: "xapp-…", className: "font-mono text-[14px]" })}
             </Field>
             <div className="sm:col-span-2">
-              <Field label="Signing secret (optional)">{inp("signing_secret", { type: "password", className: "font-mono text-[13px]" })}</Field>
+              <Field label="Signing secret (optional)">{inp("signing_secret", { type: "password", className: "font-mono text-[14px]" })}</Field>
             </div>
           </div>
         </div>
@@ -166,7 +179,6 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
       return (
         <div className="space-y-4">
           <Segmented
-            size="sm"
             value={v.mode as "token" | "app"}
             onChange={(m) => set("mode", m)}
             options={[
@@ -176,12 +188,12 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
           />
           {v.mode === "token" ? (
             <Field label="Token" hint="Fine-grained, read access to issues, PRs and contents. Write access only if stewards should file issues.">
-              {inp("token", { type: "password", placeholder: "github_pat_…", className: "font-mono text-[13px]" })}
+              {inp("token", { type: "password", placeholder: "github_pat_…", className: "font-mono text-[14px]" })}
             </Field>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="App ID">{inp("app_id", { className: "font-mono text-[13px]" })}</Field>
-              <Field label="Installation ID">{inp("installation_id", { className: "font-mono text-[13px]" })}</Field>
+              <Field label="App ID">{inp("app_id", { className: "font-mono text-[14px]" })}</Field>
+              <Field label="Installation ID">{inp("installation_id", { className: "font-mono text-[14px]" })}</Field>
               <div className="sm:col-span-2">
                 <Field label="Private key">
                   <Textarea value={v.private_key} onChange={(e) => set("private_key", e.target.value)} rows={4} placeholder="-----BEGIN RSA PRIVATE KEY-----" className="font-mono text-[12px]" />
@@ -195,7 +207,7 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
       return (
         <div className="space-y-4">
           <div>
-            <div className="text-[12.5px] font-medium text-muted mb-1.5">New stewards start at</div>
+            <div className="text-[12px] font-medium text-soft mb-1.5">New stewards start at</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-5 gap-2">
               {LEVELS.map((l) => (
                 <button
@@ -204,11 +216,11 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
                   onClick={() => set("default_level", String(l.l))}
                   className={cn(
                     "text-left rounded-lg border p-2.5 transition-colors cursor-pointer max-sm:flex max-sm:items-center max-sm:gap-3",
-                    v.default_level === String(l.l) ? "border-accent bg-accent-soft" : "border-line hover:border-line-strong bg-sunken",
+                    v.default_level === String(l.l) ? "border-fg/40 bg-hover" : "border-line hover:bg-hover",
                   )}
                 >
                   <LevelBadge level={l.l as Level} name={l.n} />
-                  <div className="mt-1.5 max-sm:mt-0 text-[11.5px] leading-snug text-muted">{l.can}</div>
+                  <div className="mt-1.5 max-sm:mt-0 text-[12px] leading-snug text-muted">{l.can}</div>
                 </button>
               ))}
             </div>
@@ -229,14 +241,15 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
           <Field label="Team name">{inp("name", { placeholder: "Payments" })}</Field>
           <Field label="Steward name">{inp("steward_name", { placeholder: "Pip" })}</Field>
           <div className="sm:col-span-2">
-            <div className="text-[12.5px] font-medium text-muted mb-1.5">Steward avatar</div>
+            <div className="text-[12px] font-medium text-soft mb-1.5">Steward avatar</div>
             <div className="flex flex-wrap gap-1.5">
               {EMOJIS.map((e) => (
                 <button
                   key={e}
                   type="button"
                   onClick={() => set("emoji", e)}
-                  className={cn("size-9 max-sm:size-10 rounded-lg border text-[18px] grid place-items-center cursor-pointer transition-all", v.emoji === e ? "border-accent bg-accent-soft scale-105" : "border-line bg-sunken hover:border-line-strong")}
+                  aria-pressed={v.emoji === e}
+                  className={cn("size-9 max-sm:size-10 rounded-lg border text-[18px] grid place-items-center cursor-pointer transition-colors", v.emoji === e ? "border-fg/40 bg-hover" : "border-transparent hover:bg-hover")}
                 >
                   {e}
                 </button>
@@ -244,13 +257,13 @@ function StepForm({ step, v, set, manifestUrl }: { step: SetupStepId; v: Values;
             </div>
           </div>
           <Field label="Slack channel (optional)">{inp("slack_channel", { placeholder: "#payments" })}</Field>
-          <Field label="GitHub repo (optional)">{inp("github_repo", { placeholder: "acme/payments-api", className: "font-mono text-[13px]" })}</Field>
+          <Field label="GitHub repo (optional)">{inp("github_repo", { placeholder: "acme/payments-api", className: "font-mono text-[14px]" })}</Field>
         </div>
       );
   }
 }
 
-function StepPanel({ s, manifestUrl, onNext }: { s: SetupStep; manifestUrl: string; onNext: () => void }) {
+function StepPanel({ s, manifestUrl, needsCode, onNext }: { s: SetupStep; manifestUrl: string; needsCode?: boolean; onNext: () => void }) {
   const [v, setV] = useState<Values>(DEFAULTS[s.id]);
   const [result, setResult] = useState<OkMessage | null>(null);
   const qc = useQueryClient();
@@ -280,26 +293,26 @@ function StepPanel({ s, manifestUrl, onNext }: { s: SetupStep; manifestUrl: stri
         save.mutate();
       }}
     >
-      <div className="px-5 pt-5 pb-4 sm:px-7 sm:pt-6 sm:pb-5 border-b border-line">
+      <div className="px-5 pt-5 pb-4 sm:px-6 border-b border-line">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[18px] font-semibold tracking-[-0.015em]">{s.title}</h2>
-          {s.optional && <span className="h-5 px-1.5 rounded-md border border-line text-[11px] text-faint inline-flex items-center">Optional</span>}
+          <h2 className="text-[16px] font-semibold tracking-[-0.01em]">{s.title}</h2>
+          {s.optional && <Badge>Optional</Badge>}
           {s.done && (
-            <span className="h-5 px-1.5 rounded-md text-[11px] text-ok bg-ok/10 border border-ok/25 inline-flex items-center gap-1">
+            <Badge tone="ok">
               <Check className="size-3" /> Done
-            </span>
+            </Badge>
           )}
         </div>
-        <p className="text-[13px] text-muted mt-1">{s.detail}</p>
+        <p className="text-[14px] text-muted mt-1">{s.detail}</p>
       </div>
-      <div className="px-5 py-5 sm:px-7 sm:py-6">
-        <StepForm step={s.id} v={v} set={set} manifestUrl={manifestUrl} />
+      <div className="px-5 py-5 sm:px-6">
+        <StepForm step={s.id} v={v} set={set} manifestUrl={manifestUrl} needsCode={needsCode} />
         <div className="mt-5 min-h-[38px]">
           <ResultLine r={result} />
         </div>
       </div>
-      <div className="px-5 sm:px-7 py-4 border-t border-line bg-sunken/40 rounded-b-xl flex flex-wrap items-center gap-2">
-        <Button type="button" icon={<FlaskConical className="size-3.5" />} loading={test.isPending} onClick={() => test.mutate()}>
+      <div className="px-5 sm:px-6 py-3 border-t border-line flex flex-wrap items-center gap-2">
+        <Button type="button" variant="secondary" icon={<FlaskConical className="size-3.5" />} loading={test.isPending} onClick={() => test.mutate()}>
           Test
         </Button>
         <div className="ml-auto flex flex-wrap justify-end items-center gap-2">
@@ -336,11 +349,11 @@ export function Setup({ standalone }: { standalone?: boolean }) {
     <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4 lg:gap-6 items-start">
       <Card className="p-2 lg:p-3 min-w-0">
         <div className="px-2.5 pt-1.5 pb-2 lg:pb-3">
-          <div className="text-[12px] text-faint">
+          <div className="text-[12px] text-muted">
             {doneCount} of {steps.length || 6} done
           </div>
-          <div className="mt-2 h-1.5 rounded-full bg-sunken overflow-hidden">
-            <motion.div className="h-full rounded-full bg-accent" initial={{ width: 0 }} animate={{ width: `${(doneCount / (steps.length || 6)) * 100}%` }} transition={{ duration: 0.6 }} />
+          <div className="mt-2 h-1 rounded-full bg-hover overflow-hidden">
+            <motion.div className="h-full rounded-full bg-ok" initial={{ width: 0 }} animate={{ width: `${(doneCount / (steps.length || 6)) * 100}%` }} transition={{ duration: 0.6 }} />
           </div>
         </div>
         <div className="flex gap-1 scroll-x lg:block">
@@ -354,20 +367,20 @@ export function Setup({ standalone }: { standalone?: boolean }) {
                   ref={on ? scrollIntoStrip : undefined}
                   onClick={() => setActive(s.id)}
                   aria-current={on ? "step" : undefined}
-                  className={cn("relative shrink-0 lg:w-full flex items-center gap-2 lg:gap-3 px-2.5 py-2 lg:py-2.5 min-h-10 rounded-lg text-left cursor-pointer transition-colors", on ? "bg-hover" : "hover:bg-hover/60")}
+                  className={cn("relative shrink-0 lg:w-full flex items-center gap-2 lg:gap-3 px-2.5 py-2 lg:py-2.5 min-h-10 rounded-lg text-left cursor-pointer transition-colors", on ? "bg-hover" : "hover:bg-hover")}
                 >
                   {i < steps.length - 1 && <span className="hidden lg:block absolute left-[22px] top-[38px] h-[calc(100%-26px)] w-px bg-line" />}
                   <span
                     className={cn(
-                      "relative grid place-items-center size-6 rounded-full text-[11.5px] font-semibold border shrink-0 transition-colors",
-                      s.done ? "bg-ok/15 border-ok/40 text-ok" : on ? "border-accent text-accent bg-accent-soft" : "border-line-strong text-faint bg-panel",
+                      "relative grid place-items-center size-6 rounded-full text-[12px] font-semibold border shrink-0 transition-colors",
+                      s.done ? "bg-ok-soft border-transparent text-ok" : on ? "border-fg text-fg bg-panel" : "border-line-strong text-muted bg-panel",
                     )}
                   >
                     {s.done ? <Check className="size-3.5" /> : i + 1}
                   </span>
                   <span className="min-w-0">
-                    <span className={cn("block whitespace-nowrap text-[13px] lg:text-[13.5px]", on ? "font-semibold text-fg" : "text-muted")}>{s.title}</span>
-                    {s.optional && <span className="hidden lg:block text-[11.5px] text-faint">Optional</span>}
+                    <span className={cn("block whitespace-nowrap text-[14px]", on ? "font-medium text-fg" : "text-soft")}>{s.title}</span>
+                    {s.optional && <span className="hidden lg:block text-[12px] text-muted">Optional</span>}
                   </span>
                 </button>
               );
@@ -377,8 +390,8 @@ export function Setup({ standalone }: { standalone?: boolean }) {
       <Card className="min-w-0">
         {current && data ? (
           <AnimatePresence mode="wait">
-            <motion.div key={current.id} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.18 }}>
-              <StepPanel s={current} manifestUrl={data.slack_manifest_url} onNext={next} />
+            <motion.div key={current.id} initial={{ opacity: 0, x: 4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+              <StepPanel s={current} manifestUrl={data.slack_manifest_url} needsCode={current.id === "admin" && !!data.needs_setup_code} onNext={next} />
             </motion.div>
           </AnimatePresence>
         ) : (
@@ -388,43 +401,42 @@ export function Setup({ standalone }: { standalone?: boolean }) {
     </div>
   );
 
-  const header = (
-    <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-end sm:justify-between sm:gap-6 sm:mb-6">
-      <div className="min-w-0">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em]">{standalone ? "Set up Keel" : "Setup"}</h1>
-        <p className="text-[13.5px] text-muted mt-1">
-          {requiredLeft ? `${requiredLeft} required ${requiredLeft === 1 ? "step" : "steps"} left. Slack and GitHub can wait.` : "Keel is ready. Optional steps can be done any time."}
-        </p>
-      </div>
-      {!requiredLeft && data && (
-        standalone ? (
-          <Button variant="primary" icon={<CircleCheck className="size-3.5" />} onClick={() => qc.invalidateQueries({ queryKey: qk.me })}>
-            Open Keel
-          </Button>
-        ) : (
-          <Link to="/">
-            <Button icon={<CircleCheck className="size-3.5" />}>Back to overview</Button>
-          </Link>
-        )
-      )}
-    </div>
-  );
+  const sub = requiredLeft ? `${requiredLeft} required ${requiredLeft === 1 ? "step" : "steps"} left. Slack and GitHub can wait.` : "Keel is ready. Optional steps can be done any time.";
+  const done =
+    !requiredLeft &&
+    data &&
+    (standalone ? (
+      <Button variant="primary" icon={<CircleCheck className="size-3.5" />} onClick={() => qc.invalidateQueries({ queryKey: qk.me })}>
+        Open Keel
+      </Button>
+    ) : (
+      <Link to="/" className={buttonClass("secondary")}>
+        <CircleCheck className="size-3.5" />
+        Back to overview
+      </Link>
+    ));
 
   if (!standalone)
     return (
       <div>
-        {header}
+        <PageHeader title="Setup" sub={sub} right={done} />
         {content}
       </div>
     );
   return (
-    <div className="app-bg min-h-full">
-      <div className="max-w-[1080px] mx-auto px-4 py-6 sm:px-8 sm:py-10">
-        <div className="flex items-center gap-2.5 mb-6 sm:mb-8">
-          <KeelMark size={30} />
-          <span className="text-[16px] font-semibold tracking-[-0.02em]">Keel</span>
+    <div className="bg-bg min-h-full">
+      <div className="max-w-[1000px] mx-auto px-4 py-6 sm:px-8 sm:py-10">
+        <div className="flex items-center gap-2.5 mb-8">
+          <KeelMark size={26} />
+          <span className="text-[16px] font-semibold tracking-[-0.015em]">Keel</span>
         </div>
-        {header}
+        <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-[20px] font-semibold tracking-[-0.015em]">Set up Keel</h1>
+            <p className="text-[14px] text-muted mt-1">{sub}</p>
+          </div>
+          {done}
+        </div>
         {content}
       </div>
     </div>

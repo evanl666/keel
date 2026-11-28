@@ -7,13 +7,14 @@ never raises a live steward's level. Raising goes through the level page, where 
 from __future__ import annotations
 
 import pathlib
+import typing
 
 import pydantic
 import sqlalchemy as sa
 import yaml
 from sqlalchemy import orm
 
-from keel import demo, feed, knowledge, labels, levels, models, services
+from keel import demo, feed, knowledge, labels, levels, models, people, services, slack_lookup
 from keel.api import routes
 
 Change = tuple[str, str]  # (create | update | keep | skip, one line)
@@ -57,6 +58,12 @@ class DocSpec(pydantic.BaseModel):
         return self
 
 
+class MemberSpec(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(extra="forbid")
+    email: str
+    role: typing.Literal["admin", "member"] = "member"
+
+
 class TeamSpec(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid")
     slug: str
@@ -69,6 +76,8 @@ class TeamSpec(pydantic.BaseModel):
     brief_hour: int | None = None
     services: list[ServiceSpec] = []
     knowledge: list[DocSpec] = []
+    members: list[MemberSpec] = []
+    sso_groups: list[str] | None = None
 
 
 class Plan(pydantic.BaseModel):
@@ -138,13 +147,10 @@ def _team(s: orm.Session, org: models.Org, spec: TeamSpec, out: list[Change]) ->
         if spec.slack_channel and spec.slack_channel not in (
             team.slack_channel_id,
             team.slack_channel_name,
-            f"#{team.slack_channel_name}",
+            f"#{spec.slack_channel}",
         ):
-            ch = spec.slack_channel
-            if ch[:1] in "CG" and ch[1:].isalnum() and ch.isupper():
-                team.slack_channel_id = ch
-            else:
-                team.slack_channel_name = ch if ch.startswith("#") else f"#{ch}"
+            slack_lookup.set_channel(team, spec.slack_channel)
+            slack_lookup.resolve_team(s, team)
             changed.append("slack channel")
         if changed:
             out.append(("update", f"team {spec.slug}: {', '.join(changed)}"))
@@ -163,7 +169,31 @@ def _team(s: orm.Session, org: models.Org, spec: TeamSpec, out: list[Change]) ->
             raise ValueError(f"{spec.slug}: brief_hour must be 0–23.")
         team.brief_hour = spec.brief_hour
         out.append(("update", f"team {spec.slug}: brief at {spec.brief_hour}:00"))
+    if spec.sso_groups is not None and list(spec.sso_groups) != list(team.sso_groups or []):
+        team.sso_groups = list(spec.sso_groups)
+        out.append(("update", f"team {spec.slug}: SSO groups {', '.join(spec.sso_groups) or 'none'}"))
     return team
+
+
+def _members(s: orm.Session, org: models.Org, team: models.Team, spec: TeamSpec, out: list[Change]) -> None:
+    """Add people to the team or change their role. Never removes anyone (do that in the app)."""
+    for m in spec.members:
+        user = s.scalar(
+            sa.select(models.User).where(
+                models.User.org_id == org.id, models.User.email == people.norm_email(m.email)
+            )
+        )
+        if user is None:
+            out.append(
+                ("skip", f"{spec.slug} member {m.email}: no account yet; invite them in Keel → People")
+            )
+            continue
+        row = s.get(models.TeamMember, {"team_id": team.id, "user_id": user.id})
+        want = people.stored_team_role(m.role)
+        if row is not None and row.role == want:
+            continue
+        people.set_member(s, team, user, m.role, ACTOR)
+        out.append(("update" if row else "create", f"{spec.slug} member {user.email} ({m.role})"))
 
 
 def gateway_level(s: orm.Session, team: models.Team) -> int:
@@ -235,14 +265,11 @@ def _knowledge(
             )
         else:
             content, title, source = d.content or "", d.title or "Untitled", None
-        existing = s.scalar(
-            sa.select(models.KnowledgeDoc).where(
-                models.KnowledgeDoc.team_id == team.id,
-                models.KnowledgeDoc.source
-                == (source or f"keel://{team.slug}/{title.lower().replace(' ', '-')}"),
-            )
-        )
+        existing = knowledge.find(s, team, title, source)
         if existing is not None and existing.content == content and existing.label == d.label:
+            continue
+        if existing is not None and existing.sync_id:
+            out.append(("skip", f"{spec.slug} knowledge {title}: synced from a source; edit it there"))
             continue
         knowledge.add(s, team, title, content, d.label, source, actor=ACTOR)
         out.append(("update" if existing else "create", f"{spec.slug} knowledge {title} [{d.label}]"))
@@ -262,6 +289,7 @@ def apply(
         _steward(s, team, spec, out)
         _services(s, team, spec, out)
         _knowledge(s, team, spec, base_dir, out)
+        _members(s, org, team, spec, out)
     if dry_run:
         s.rollback()
         return out

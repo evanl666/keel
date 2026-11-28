@@ -8,7 +8,7 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy import orm
 
-from keel import learning, ledger, levels, models, services
+from keel import connections, knowledge, learning, ledger, levels, models, people, services
 
 HEALTH_COST = {
     "overdue": 12,
@@ -50,18 +50,41 @@ class TeamIndex:
         return t.slug if t else None
 
 
-def steward(st: models.Steward, team: models.Team, pending: int) -> J:
-    """StewardSummary."""
+def slack_state(session: orm.Session, team: models.Team) -> tuple[str, str]:
+    """(state, where) for a team's Slack home: state is demo | off | unset | unresolved | live."""
+    org = session.get(models.Org, team.org_id)
+    name = team.slack_channel_name or (f"#{team.slug}" if org and org.settings.get("demo") else "")
+    if org is not None and org.settings.get("demo"):
+        return "demo", name
+    if not connections.resolve(session, team.org_id, "slack").configured:
+        return "off", name
+    if not team.slack_channel_id and not team.slack_channel_name:
+        return "unset", ""
+    if not team.slack_channel_id:
+        return "unresolved", name
+    return "live", name or team.slack_channel_id
+
+
+def steward(st: models.Steward, team: models.Team, pending: int, slack: tuple[str, str] = ("demo", "")) -> J:
+    """StewardSummary. ``slack`` is :func:`slack_state`; the status line only claims what's true."""
     lvl = levels.level_def(st.level)
-    where = team.slack_channel_name or "the web desk"
+    state, name = slack
+    waits = (
+        f"{pending} draft{'s wait' if pending != 1 else ' waits'} for you."
+        if pending
+        else "Nothing waits for you."
+    )
     if st.paused:
         line = "Paused. Everything waits for you."
-    elif st.level == 0:
-        line = f"Observing {where}. Sends nothing."
-    elif pending:
-        line = f"Watching {where}. {pending} draft{'s wait' if pending != 1 else ' waits'} for you."
+    elif state in ("demo", "live"):
+        where = name or "the web desk"
+        line = f"Observing {where}. Sends nothing." if st.level == 0 else f"Watching {where}. {waits}"
+    elif state == "unresolved":
+        line = f"Looking for {name} in Slack. Invite the Keel app to it. {waits}"
+    elif state == "unset":
+        line = f"On the web desk. No Slack channel set. {waits}"
     else:
-        line = f"Watching {where}. Nothing waits for you."
+        line = f"On the web desk. Slack isn't connected. {waits}"
     return {
         "id": st.id,
         "name": st.name,
@@ -135,7 +158,7 @@ def team_summary(session: orm.Session, team: models.Team, now: dt.datetime | Non
         "slug": team.slug,
         "name": team.name,
         "color": team.color,
-        "steward": steward(st, team, pending) if st else None,
+        "steward": steward(st, team, pending, slack_state(session, team)) if st else None,
         "health": max(0, min(100, health)),
         "counts": counts,
     }
@@ -257,9 +280,9 @@ def level_info(session: orm.Session, st: models.Steward) -> J:
     }
 
 
-def knowledge_doc(d: models.KnowledgeDoc) -> J:
-    """KnowledgeDoc."""
-    return {
+def knowledge_doc(d: models.KnowledgeDoc, content: bool = False) -> J:
+    """KnowledgeDoc (with ``content`` when asked)."""
+    out = {
         "id": d.id,
         "title": d.title,
         "source": d.source,
@@ -267,6 +290,91 @@ def knowledge_doc(d: models.KnowledgeDoc) -> J:
         "updated_at": iso(d.updated_at),
         "snippet": " ".join(d.content.split())[:SNIPPET_CHARS],
         "chars": len(d.content),
+        "origin": d.origin,
+        "source_url": d.source_url,
+        "review_by": d.review_by.isoformat() if d.review_by else None,
+        "stale": knowledge.is_stale(d),
+        "sync_id": d.sync_id,
+    }
+    if content:
+        out["content"] = d.content
+    return out
+
+
+def knowledge_source(src: models.KnowledgeSource, docs: int) -> J:
+    """KnowledgeSource."""
+    return {
+        "id": src.id,
+        "kind": src.kind,
+        "target": src.target,
+        "label": src.label,
+        "last_synced_at": iso(src.last_synced_at),
+        "status": src.status,
+        "status_line": src.status_line,
+        "docs": docs,
+    }
+
+
+def person(session: orm.Session, u: models.User) -> J:
+    """Person: an account with its teams."""
+    return {
+        **user(u),
+        "disabled": u.disabled,
+        "sso": bool(u.sso_subject) and not u.password_hash,
+        "slack_linked": bool(u.slack_user_id),
+        "github_login": u.github_login,
+        "teams": [
+            {"slug": t.slug, "name": t.name, "role": people.api_team_role(r)}
+            for t, r in people.teams_of(session, u)
+        ],
+        "created_at": iso(u.created_at),
+        "last_seen_at": iso(u.last_seen_at),
+    }
+
+
+def invite(session: orm.Session, inv: models.Invite) -> J:
+    """Invite (never the token)."""
+    names = {
+        t.slug: t.name
+        for t in session.scalars(sa.select(models.Team).where(models.Team.org_id == inv.org_id))
+    }
+    return {
+        "id": inv.id,
+        "email": inv.email,
+        "role": inv.role,
+        "teams": [
+            {"slug": t["slug"], "name": names.get(t["slug"], t["slug"]), "role": t.get("role", "member")}
+            for t in inv.teams
+        ],
+        "invited_by": inv.invited_by,
+        "created_at": iso(inv.created_at),
+        "expires_at": iso(inv.expires_at),
+        "status": people.invite_status(inv),
+    }
+
+
+def member(u: models.User, m: models.TeamMember) -> J:
+    """Member of a team."""
+    return {
+        "user_id": u.id,
+        "name": u.name,
+        "email": u.email,
+        "role": people.api_team_role(m.role),
+        "avatar_url": u.avatar_url,
+    }
+
+
+def team_settings(session: orm.Session, team: models.Team) -> J:
+    """TeamSettings."""
+    state, _ = slack_state(session, team)
+    return {
+        "slack_channel": team.slack_channel_name or team.slack_channel_id,
+        "slack_channel_id": team.slack_channel_id,
+        "slack_connected": state in ("unset", "unresolved", "live"),
+        "github_repos": list(team.github_repos or []),
+        "timezone": team.timezone,
+        "brief_hour": team.brief_hour,
+        "sso_groups": list(team.sso_groups or []),
     }
 
 

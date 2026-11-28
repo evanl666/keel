@@ -60,7 +60,7 @@ function Rise({ i = 0, className, children }: { i?: number; className?: string; 
   );
 }
 
-const eyebrow = "text-[12px] font-semibold uppercase tracking-[0.16em] text-white/65";
+const eyebrow = "text-[12px] font-semibold text-white/65";
 const big = "font-black tracking-[-0.055em] leading-[0.85] tabular";
 
 function ShareSlide({ team, f }: { team: WrappedTeam; f: WrappedFacts }) {
@@ -69,16 +69,16 @@ function ShareSlide({ team, f }: { team: WrappedTeam; f: WrappedFacts }) {
     <div className="flex flex-col h-full justify-center gap-5">
       <Rise>
         <div className={eyebrow}>That's a wrap</div>
-        <div className="mt-2 text-[26px] sm:text-[28px] font-bold leading-tight tracking-[-0.02em]">Pass it around.</div>
+        <div className="mt-2 text-[26px] sm:text-[28px] font-bold leading-tight tracking-[-0.015em]">Pass it around.</div>
       </Rise>
       <Rise i={1}>
-        <div className="rounded-2xl overflow-hidden ring-1 ring-white/15 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.8)] aspect-[1200/630] bg-white/5">
+        <div className="rounded-xl overflow-hidden border border-white/15 aspect-[1200/630] bg-white/5">
           {card.data ? (
             <img src={svgDataUrl(card.data)} alt={`${team.name} Wrapped share card`} className="w-full h-full" />
           ) : card.error ? (
-            <div className="h-full grid place-items-center px-4 text-center text-[13px] text-white/70">{errorLine(card.error)}</div>
+            <div className="h-full grid place-items-center px-4 text-center text-[14px] text-white/70">{errorLine(card.error)}</div>
           ) : (
-            <div className="h-full grid place-items-center text-[13px] text-white/60">Drawing the card…</div>
+            <div className="h-full grid place-items-center text-[14px] text-white/60">Drawing the card…</div>
           )}
         </div>
       </Rise>
@@ -87,13 +87,13 @@ function ShareSlide({ team, f }: { team: WrappedTeam; f: WrappedFacts }) {
           type="button"
           disabled={!card.data}
           onClick={() => card.data && downloadText(`${fileSlug(team.name)}-wrapped-${f.to.replace(/\s+/g, "-").toLowerCase()}.svg`, card.data)}
-          className="inline-flex items-center justify-center gap-2 h-11 rounded-full bg-white text-[#0c0a1a] text-[14px] font-semibold cursor-pointer hover:bg-white/90 active:scale-[0.98] transition disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 h-10 rounded-lg bg-white text-[#1c1c1e] text-[14px] font-semibold cursor-pointer hover:bg-white/90 transition disabled:opacity-50"
         >
           <Download className="size-4" /> Download card
         </button>
       </Rise>
       {f.oldest_open && (
-        <Rise i={3} className="text-[13px] text-white/65 leading-snug">
+        <Rise i={3} className="text-[14px] text-white/65 leading-snug">
           Next month: <span className="text-white/90">{f.oldest_open.title}</span> has waited {f.oldest_open.days} days.
         </Rise>
       )}
@@ -113,13 +113,13 @@ function buildSlides(team: WrappedTeam, f: WrappedFacts): Slide[] {
             <span className="text-[34px] leading-none">{team.steward.emoji}</span>
             <div>
               <div className={eyebrow}>{team.name} Wrapped</div>
-              <div className="text-[13px] text-white/60 mt-0.5">
+              <div className="text-[14px] text-white/60 mt-0.5">
                 {f.from} → {f.to}
               </div>
             </div>
           </Rise>
           <div className="my-auto">
-            <Rise i={1} className="text-[24px] sm:text-[26px] font-bold leading-tight tracking-[-0.02em]">
+            <Rise i={1} className="text-[24px] sm:text-[26px] font-bold leading-tight tracking-[-0.015em]">
               {rate === null ? "Nothing closed this month. Yet." : "Of everything you finished,"}
             </Rise>
             <Rise i={2} className={cn(big, "text-[112px] sm:text-[128px] mt-4")}>
@@ -143,11 +143,11 @@ function buildSlides(team: WrappedTeam, f: WrappedFacts): Slide[] {
     },
     {
       id: "kept",
-      colors: ["#7c5cff", "#ec4899"],
+      colors: ["#1d5bd0", "#1d5bd0"],
       body: (
         <div className="flex flex-col h-full justify-center">
           <Rise className={eyebrow}>Promises</Rise>
-          <Rise i={1} className="mt-3 text-[24px] sm:text-[26px] font-bold leading-tight tracking-[-0.02em]">
+          <Rise i={1} className="mt-3 text-[24px] sm:text-[26px] font-bold leading-tight tracking-[-0.015em]">
             {f.made} new {f.made === 1 ? "promise" : "promises"} came in.
             <span className="block text-white/70">You kept</span>
           </Rise>
@@ -157,7 +157,7 @@ function buildSlides(team: WrappedTeam, f: WrappedFacts): Slide[] {
           <Rise i={3} className="text-[20px] font-semibold text-white/90 mt-3">
             {f.on_time} of them on time.
           </Rise>
-          <div className="mt-7 space-y-2 text-[14.5px] text-white/80">
+          <div className="mt-7 space-y-2 text-[14px] text-white/80">
             {f.busiest_day && <Rise i={4}>{f.busiest_day} was your busiest day.</Rise>}
             {f.helped_other_teams > 0 && (
               <Rise i={5}>
@@ -177,7 +177,7 @@ function buildSlides(team: WrappedTeam, f: WrappedFacts): Slide[] {
       body: (
         <div className="flex flex-col h-full justify-center">
           <Rise className={eyebrow}>Fastest close</Rise>
-          <Rise i={1} className="mt-3 text-[24px] sm:text-[26px] font-bold leading-tight tracking-[-0.02em]">
+          <Rise i={1} className="mt-3 text-[24px] sm:text-[26px] font-bold leading-tight tracking-[-0.015em]">
             From ask to done in
           </Rise>
           <Rise i={2} className="mt-4 flex items-baseline gap-3">
@@ -186,7 +186,7 @@ function buildSlides(team: WrappedTeam, f: WrappedFacts): Slide[] {
             </span>
             <span className="text-[28px] font-bold text-white/85">{h.unit}</span>
           </Rise>
-          <Rise i={3} className="mt-6 rounded-2xl bg-white/10 ring-1 ring-white/15 px-4 py-3">
+          <Rise i={3} className="mt-6 rounded-xl bg-white/10 ring-1 ring-white/15 px-4 py-3">
             <div className="text-[12px] font-mono text-white/60">{f.fastest.key}</div>
             <div className="text-[16px] font-semibold leading-snug mt-0.5">{f.fastest.title}</div>
           </Rise>
@@ -204,7 +204,7 @@ function buildSlides(team: WrappedTeam, f: WrappedFacts): Slide[] {
           <Rise className={eyebrow}>Your people</Rise>
           {f.top_closers.length > 0 && (
             <>
-              <Rise i={1} className="mt-3 text-[24px] sm:text-[26px] font-bold leading-tight tracking-[-0.02em]">
+              <Rise i={1} className="mt-3 text-[24px] sm:text-[26px] font-bold leading-tight tracking-[-0.015em]">
                 The ones who closed the most.
               </Rise>
               <div className="mt-5 space-y-3">
@@ -213,8 +213,8 @@ function buildSlides(team: WrappedTeam, f: WrappedFacts): Slide[] {
                     <span className={cn("w-7 text-[30px] font-black tabular text-center", i === 0 ? "text-white" : "text-white/55")}>{i + 1}</span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className="text-[17px] font-semibold truncate">{c.who}</span>
-                        <span className="ml-auto text-[13px] text-white/70 tabular whitespace-nowrap">{c.kept} kept</span>
+                        <span className="text-[16px] font-semibold truncate">{c.who}</span>
+                        <span className="ml-auto text-[14px] text-white/70 tabular whitespace-nowrap">{c.kept} kept</span>
                       </div>
                       <div className="mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden">
                         <motion.div className="h-full rounded-full bg-white/85" initial={{ width: 0 }} animate={{ width: `${(c.kept / max) * 100}%` }} transition={{ delay: 0.5 + i * 0.16, duration: 0.8, ease: [0.22, 1, 0.36, 1] }} />
@@ -226,10 +226,10 @@ function buildSlides(team: WrappedTeam, f: WrappedFacts): Slide[] {
             </>
           )}
           {f.best_partner && (
-            <Rise i={2 + f.top_closers.length} className="mt-8 rounded-2xl bg-white/10 ring-1 ring-white/15 px-4 py-3.5">
-              <div className="text-[12px] uppercase tracking-[0.12em] text-white/60 font-semibold">Best partner</div>
+            <Rise i={2 + f.top_closers.length} className="mt-8 rounded-xl bg-white/10 ring-1 ring-white/15 px-4 py-3.5">
+              <div className="text-[12px] text-white/60 font-semibold">Best partner</div>
               <div className="text-[22px] font-bold mt-1">{f.best_partner.team}</div>
-              <div className="text-[13.5px] text-white/75">
+              <div className="text-[14px] text-white/75">
                 {f.best_partner.count} {f.best_partner.count === 1 ? "promise" : "promises"} kept between you.
               </div>
             </Rise>
@@ -254,14 +254,14 @@ function buildSlides(team: WrappedTeam, f: WrappedFacts): Slide[] {
           {f.persona.line}
         </Rise>
         {f.headline && f.headline !== f.persona.line && (
-          <Rise i={4} className="mt-6 border-l-2 border-white/40 pl-3 text-[15px] italic text-white/80 leading-snug">
+          <Rise i={4} className="mt-6 border-l-2 border-white/40 pl-3 text-[16px] italic text-white/80 leading-snug">
             {f.headline}
           </Rise>
         )}
       </div>
     ),
   });
-  slides.push({ id: "share", colors: ["#7c5cff", "#2a1650"], body: <ShareSlide team={team} f={f} /> });
+  slides.push({ id: "share", colors: ["#46464b", "#46464b"], body: <ShareSlide team={team} f={f} /> });
   return slides;
 }
 
@@ -328,7 +328,7 @@ export function WrappedStory({ team, onClose }: { team: WrappedTeam; onClose: ()
 
   return createPortal(
     <motion.div
-      className="fixed inset-0 z-[120] grid place-items-center bg-black/80 backdrop-blur-md"
+      className="fixed inset-0 z-[120] grid place-items-center bg-[rgba(12,12,14,0.78)]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -345,19 +345,17 @@ export function WrappedStory({ team, onClose }: { team: WrappedTeam; onClose: ()
           aria-modal
           aria-label={`${team.name} Wrapped`}
           tabIndex={-1}
-          initial={{ scale: 0.96, y: 12 }}
-          animate={{ scale: 1, y: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="dark relative overflow-hidden text-white bg-[#0c0a1a] outline-none select-none w-screen h-dvh sm:w-auto sm:h-[min(780px,92dvh)] sm:aspect-[9/16] sm:rounded-[28px] sm:ring-1 sm:ring-white/10 shadow-[0_40px_120px_-20px_rgba(0,0,0,0.9)]"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18 }}
+          className="dark relative overflow-hidden text-white bg-[#141416] outline-none select-none w-screen h-dvh sm:w-auto sm:h-[min(780px,92dvh)] sm:aspect-[9/16] sm:rounded-2xl shadow-pop"
           style={{ touchAction: "pan-y" }}
         >
           <AnimatePresence initial={false}>
-            <motion.div key={slide?.id ?? "loading"} className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }}>
-              <div className="wrapped-blob absolute -top-[20%] -left-[30%] w-[120%] aspect-square rounded-full blur-3xl opacity-60" style={{ background: `radial-gradient(circle, ${slide?.colors[0] ?? team.color}, transparent 65%)` }} />
-              <div className="wrapped-blob absolute -bottom-[25%] -right-[35%] w-[120%] aspect-square rounded-full blur-3xl opacity-50 [animation-delay:-7s]" style={{ background: `radial-gradient(circle, ${slide?.colors[1] ?? "#7c5cff"}, transparent 65%)` }} />
+            <motion.div key={slide?.id ?? "loading"} className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+              <div className="absolute inset-0" style={{ background: `color-mix(in srgb, ${slide?.colors[0] ?? team.color} 16%, #141416)` }} />
             </motion.div>
           </AnimatePresence>
-          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/40" />
 
           <div className="absolute inset-x-0 top-0 z-10 px-3 pt-[max(12px,env(safe-area-inset-top))]">
             <div className="flex gap-1" aria-hidden>
@@ -377,7 +375,7 @@ export function WrappedStory({ team, onClose }: { team: WrappedTeam; onClose: ()
               ))}
             </div>
             <div className="mt-2 flex items-center gap-1">
-              <span className="text-[12.5px] font-semibold text-white/85 pl-1">
+              <span className="text-[12px] font-semibold text-white/85 pl-1">
                 {team.steward.emoji} {team.name} · last {DAYS} days
               </span>
               <span className="sr-only" aria-live="polite">
@@ -425,7 +423,7 @@ export function WrappedStory({ team, onClose }: { team: WrappedTeam; onClose: ()
                   <motion.div className="text-[56px]" animate={reduce ? undefined : { scale: [1, 1.12, 1] }} transition={{ repeat: Infinity, duration: 1.4 }}>
                     {team.steward.emoji}
                   </motion.div>
-                  <div className="mt-3 text-[15px] text-white/80">Wrapping up {team.name}'s month…</div>
+                  <div className="mt-3 text-[16px] text-white/80">Wrapping up {team.name}'s month…</div>
                 </div>
               </div>
             ) : error || !slide ? (
@@ -433,7 +431,7 @@ export function WrappedStory({ team, onClose }: { team: WrappedTeam; onClose: ()
                 <div>
                   <div className="text-[40px]">🌧️</div>
                   <div className="mt-3 text-[16px] font-semibold">The recap didn't load</div>
-                  <div className="mt-1 text-[13.5px] text-white/70">{error ? errorLine(error) : "There was nothing to show."}</div>
+                  <div className="mt-1 text-[14px] text-white/70">{error ? errorLine(error) : "There was nothing to show."}</div>
                 </div>
               </div>
             ) : (
@@ -454,7 +452,7 @@ export function WrappedStory({ team, onClose }: { team: WrappedTeam; onClose: ()
           </div>
 
           {slides.length > 0 && (
-            <div className="absolute inset-x-0 bottom-0 z-10 pb-[max(12px,env(safe-area-inset-bottom))] text-center text-[11.5px] text-white/50 pointer-events-none">
+            <div className="absolute inset-x-0 bottom-0 z-10 pb-[max(12px,env(safe-area-inset-bottom))] text-center text-[12px] text-white/50 pointer-events-none">
               {idx === 0 ? (
                 <>
                   <span className="touch:hidden">Click, or press → to continue</span>

@@ -93,3 +93,21 @@ def require_team_admin(s: orm.Session, u: models.User, team_id: str, what: str =
     """403 unless a team admin or org admin."""
     if team_role(s, u, team_id) not in ("org_admin", "team_admin"):
         raise fastapi.HTTPException(403, f"Only a team admin can {what}.")
+
+
+def set_session_cookie(request: fastapi.Request, response: fastapi.Response, user_id: str) -> None:
+    """Sign the person in on this response."""
+    response.set_cookie(
+        COOKIE,
+        auth_utils.sign_session(user_id),
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+        max_age=auth_utils.SESSION_MAX_AGE_S,
+    )
+
+
+def client_ip(request: fastapi.Request) -> str:
+    """The caller's address (the first X-Forwarded-For hop when behind a proxy)."""
+    fwd = request.headers.get("x-forwarded-for", "")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")

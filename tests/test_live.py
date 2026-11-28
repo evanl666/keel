@@ -8,11 +8,29 @@ from __future__ import annotations
 import datetime as dt
 import os
 import re
+import types
+import typing
 
 import pytest
 import sqlalchemy as sa
 
-from keel import brain, db, demo, knowledge, learning, ledger, llm, models, steward
+from keel import (
+    brain,
+    db,
+    demo,
+    github_poll,
+    inbox,
+    knowledge,
+    knowledge_sync,
+    learning,
+    ledger,
+    llm,
+    models,
+    people,
+    slack_app,
+    steward,
+)
+from keel.connectors import github
 
 PROVIDER = os.environ.get("KEEL_LIVE_PROVIDER", "")
 pytestmark = [
@@ -327,3 +345,136 @@ def test_live_desk_agent_logs_an_open_question(demo_org: str) -> None:
         gap = s.scalar(sa.select(models.KnowledgeGap).where(models.KnowledgeGap.question.ilike("%crypto%")))
     assert gap is not None, reply.text
     assert any(a["kind"] == "question" for a in reply.meta.get("actions", [])), reply.meta
+
+
+# ---------------------------------------------------------------- v0.2: Slack DMs and /keel ask, synced knowledge
+
+
+@pytest.fixture
+def live_team(team: models.Team, model, monkeypatch: pytest.MonkeyPatch) -> models.Team:
+    """The conftest team with a real model, refund rules in English and Chinese, and Ada linked to Slack U1."""
+    monkeypatch.setattr(llm, "for_org", lambda _s, _o: model)
+    with db.session() as s:
+        t = s.get(models.Team, team.id)
+        t.slack_channel_id = "C0PAY1234"
+        ada = s.scalar(sa.select(models.User).where(models.User.email == "ada@test.example"))
+        ada.slack_user_id = "U1"
+        people.set_member(s, t, ada, "member", actor="test")
+        knowledge.add(
+            s, t, "Refunds", "Refunds over $10k need approval from Maya Chen in Finance.", "internal"
+        )
+        knowledge.add(
+            s, t, "退款审批", "超过五万元人民币的退款由财务部的周婷审批，一般一个工作日内完成。", "internal"
+        )
+        knowledge.add(s, t, "Deploys", "Merge to main, then tag a release. Fridays are frozen.", "internal")
+    return team
+
+
+class _Slack:
+    """Records what the bridge posts; enough of the Web API for /keel and DMs."""
+
+    def __init__(self) -> None:
+        self.posted: list[dict] = []
+
+    def chat_postMessage(self, **kw: typing.Any) -> dict:
+        self.posted.append(kw)
+        return {"ok": True}
+
+    def users_info(self, user: str) -> dict:
+        return {"user": {"profile": {"email": "ada@test.example", "display_name": "Ada"}}}
+
+
+def test_live_slash_ask_answers_privately_with_source_links(live_team: models.Team) -> None:
+    with db.session() as s:
+        org_id = s.get(models.Team, live_team.id).org_id
+    bridge = object.__new__(slack_app.SlackBridge)
+    bridge.org_id, bridge.app, bridge._explained = org_id, types.SimpleNamespace(client=_Slack()), set()
+    acks: list[str] = []
+    replies: list[dict] = []
+    bridge._on_command(
+        ack=acks.append,
+        command={"text": "ask who signs off on a $25k refund?", "user_id": "U1", "channel_id": "D0DM"},
+        respond=lambda **kw: replies.append(kw),
+    )
+    text = replies[0]["text"]
+    assert replies[0]["response_type"] == "ephemeral"
+    assert "Maya" in text, text
+    assert "|Refunds>" in text and "/teams/payments/knowledge?doc=" in text, text
+
+
+def test_live_chinese_dm_is_answered_in_the_dm_from_chinese_notes(live_team: models.Team) -> None:
+    with db.session() as s:
+        t = s.get(models.Team, live_team.id)
+        ev = inbox.record(
+            s,
+            t.org_id,
+            t.id,
+            "slack",
+            "D0DM:7.0",
+            "message",
+            {
+                "text": "八万块的退款要找谁审批？",
+                "user": "U1",
+                "user_name": "Ada",
+                "channel": "D0DM",
+                "ts": "7.0",
+                "thread_ts": "7.0",
+                "directed": True,
+            },
+        )
+        steward.process_inbox(ev.id, s)
+        op = s.scalar(sa.select(models.Operation).where(models.Operation.kind.like("slack.%")))
+        assert op is not None and op.payload["channel"] == "D0DM" and "thread_ts" not in op.payload
+        text = op.payload["text"]
+    assert "周婷" in text and CJK.search(text.split("Sources:")[0]), text
+    assert "|退款审批>" in text, text
+
+
+def _ask(s, team: models.Team, model, question: str) -> tuple[str, list[str]]:
+    """What POST /teams/{slug}/ask does: search the notes, then answer from them."""
+    found = knowledge.search(s, [team.id], question, "internal")
+    reply = learning.answer(s, team, model, question, found, steward="Pip", asked_by="Ada")
+    return reply.text, [p.title for p in found.passages]
+
+
+def test_live_url_source_sync_then_ask(live_team: models.Team, model) -> None:
+    with db.session() as s:
+        t = s.get(models.Team, live_team.id)
+        src = knowledge_sync.add_source(s, t, "url", "https://peps.python.org/pep-0020/", "internal", "test")
+        knowledge_sync.sync(s, src)
+        assert src.status == "ok", src.status_line
+        doc = s.scalar(sa.select(models.KnowledgeDoc).where(models.KnowledgeDoc.sync_id == src.id))
+        assert "Zen of Python" in doc.title and "silently" in doc.content
+        answer, titles = _ask(s, t, model, "What does the Zen of Python say about errors?")
+    assert "silent" in answer.lower(), answer
+    assert any("Zen of Python" in title for title in titles), titles
+
+
+@pytest.mark.skipif(not os.environ.get("GITHUB_TOKEN"), reason="set GITHUB_TOKEN for real GitHub calls")
+def test_live_github_folder_sync_and_poll(
+    live_team: models.Team, model, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    auth = github.GitHubAuth(token=os.environ["GITHUB_TOKEN"])
+    monkeypatch.setattr(github, "auth_for_org", lambda _s, _o: auth)
+    with db.session() as s:
+        t = s.get(models.Team, live_team.id)
+        src = knowledge_sync.add_source(s, t, "github", "langchain-ai/deepagents", "internal", "test")
+        knowledge_sync.sync(s, src)
+        assert src.status == "ok", src.status_line
+        docs = s.scalars(sa.select(models.KnowledgeDoc).where(models.KnowledgeDoc.sync_id == src.id)).all()
+        assert docs and all(
+            d.source_url.startswith("https://github.com/langchain-ai/deepagents/blob/") for d in docs
+        )
+        answer, titles = _ask(s, t, model, "What is deepagents, in one sentence?")
+        assert set(titles) & {d.title for d in docs}, titles
+        assert "agent" in answer.lower(), answer
+
+        repo = "langchain-ai/deepagents"
+        assert github_poll.poll_repo(s, t.org_id, t, repo) == 0, "the first poll only sets the start"
+        cur = s.get(models.SyncCursor, f"github:{repo}")
+        cur.value = (models.utcnow() - dt.timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        got = github_poll.poll_repo(s, t.org_id, t, repo)
+        events = s.scalars(sa.select(models.InboxEvent).where(models.InboxEvent.source == "github")).all()
+        assert got == len(events) > 0, got
+        cur.value = (models.utcnow() - dt.timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        assert github_poll.poll_repo(s, t.org_id, t, repo) == 0, "the same events are never stored twice"

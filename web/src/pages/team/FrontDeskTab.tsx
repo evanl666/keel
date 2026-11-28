@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, EyeOff, FileText, Search } from "lucide-react";
+import { ArrowUp, ExternalLink, EyeOff, FileText, Search } from "lucide-react";
 import { api, errorLine } from "../../api/client";
 import { qk, useChat } from "../../api/hooks";
 import type { AskResult, AskSource, ChatMessage, TeamDetail } from "../../api/types";
-import { Button, Card, CardHeader, ErrorLine, Input, Skeleton } from "../../components/ui";
+import { Button, buttonClass, Card, CardHeader, ErrorLine, Input, Skeleton } from "../../components/ui";
 import { LabelBadge, Markdown, StewardAvatar } from "../../components/keel";
 import { clock } from "../../lib/time";
-import { alpha, cn } from "../../lib/utils";
+import { cn } from "../../lib/utils";
 
 const SUGGEST: Record<string, string[]> = {
   payments: ["What's at risk this week?", "How do we rotate the webhook secret?", "What's our refund policy?"],
@@ -21,10 +21,17 @@ function Sources({ sources }: { sources: AskSource[] }) {
   return (
     <div className="mt-2.5 flex flex-col gap-1.5">
       {sources.map((s) => (
-        <div key={s.title} className="flex items-center gap-2 rounded-lg border border-line bg-sunken px-2.5 py-1.5 text-[12px]">
-          <FileText className="size-3.5 text-faint shrink-0" />
-          <span className="min-w-0 font-medium truncate">{s.title}</span>
-          <span className="min-w-0 text-faint truncate max-sm:hidden">· {s.source}</span>
+        <div key={s.title} className="flex items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[12px]">
+          <FileText className="size-3.5 text-muted shrink-0" />
+          {s.url ? (
+            <a href={s.url} target="_blank" rel="noreferrer" className="min-w-0 inline-flex items-center gap-1 font-medium text-fg hover:text-accent hover:underline">
+              <span className="truncate">{s.title}</span>
+              <ExternalLink className="size-3 shrink-0 text-muted" />
+            </a>
+          ) : (
+            <span className="min-w-0 font-medium truncate">{s.title}</span>
+          )}
+          <span className="min-w-0 text-muted truncate max-sm:hidden">· {s.source}</span>
           <LabelBadge label={s.label} className="ml-auto shrink-0" />
         </div>
       ))}
@@ -35,7 +42,7 @@ function Sources({ sources }: { sources: AskSource[] }) {
 function Withheld({ n }: { n: number }) {
   if (!n) return null;
   return (
-    <div className="mt-2.5 flex items-center gap-2 text-[12px] text-faint">
+    <div className="mt-2.5 flex items-center gap-2 text-[12px] text-muted">
       <EyeOff className="size-3.5" />
       {n} {n === 1 ? "source" : "sources"} hidden: this audience can't see them
     </div>
@@ -45,13 +52,10 @@ function Withheld({ n }: { n: number }) {
 function Bubble({ m, t }: { m: ChatMessage; t: TeamDetail }) {
   const mine = m.role === "user";
   return (
-    <motion.div layout initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 420, damping: 32 }} className={cn("flex gap-2.5", mine && "justify-end")}>
+    <motion.div layout="position" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }} className={cn("flex gap-2.5", mine && "justify-end")}>
       {!mine && <StewardAvatar emoji={t.steward.emoji} color={t.color} size="sm" active={false} className="mt-0.5" />}
       <div className={cn("max-w-[78%] min-w-0", mine && "flex flex-col items-end")}>
-        <div
-          className={cn("rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed", mine ? "rounded-br-md text-white" : "rounded-tl-md border border-line bg-panel-2")}
-          style={mine ? { background: `linear-gradient(135deg, ${t.color}, ${alpha(t.color, 0.82)})` } : undefined}
-        >
+        <div className={cn("rounded-xl px-3.5 py-2.5 text-[14px] leading-relaxed", mine ? "bg-hover text-fg" : "border border-line bg-panel")}>
           {mine ? m.text : <Markdown compact>{m.text}</Markdown>}
           {m.sources && m.sources.length > 0 && <Sources sources={m.sources} />}
         </div>
@@ -59,8 +63,8 @@ function Bubble({ m, t }: { m: ChatMessage; t: TeamDetail }) {
           <div className="mt-1.5 flex gap-1.5 flex-wrap">
             {m.actions.map((a) =>
               a.link ? (
-                <Link key={a.text} to={a.link}>
-                  <Button size="sm">{a.text}</Button>
+                <Link key={a.text} to={a.link} className={buttonClass("secondary", "sm")}>
+                  {a.text}
                 </Link>
               ) : (
                 <Button key={a.text} size="sm" disabled>
@@ -70,7 +74,7 @@ function Bubble({ m, t }: { m: ChatMessage; t: TeamDetail }) {
             )}
           </div>
         )}
-        <div className="mt-1 px-1 text-[11px] text-faint">{clock(m.at)}</div>
+        <div className="mt-1 px-1 text-[12px] text-muted">{clock(m.at)}</div>
       </div>
     </motion.div>
   );
@@ -80,7 +84,7 @@ function Typing({ t }: { t: TeamDetail }) {
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex gap-2.5">
       <StewardAvatar emoji={t.steward.emoji} color={t.color} size="sm" active={false} />
-      <div className="rounded-2xl rounded-tl-md border border-line bg-panel-2 px-3.5 py-3 flex gap-1">
+      <div className="rounded-xl border border-line bg-panel px-3.5 py-3 flex gap-1">
         {[0, 1, 2].map((i) => (
           <motion.span key={i} className="size-1.5 rounded-full bg-muted" animate={{ opacity: [0.3, 1, 0.3], y: [0, -2, 0] }} transition={{ repeat: Infinity, duration: 1, delay: i * 0.15 }} />
         ))}
@@ -123,7 +127,7 @@ function Chat({ t }: { t: TeamDetail }) {
                 <div>
                   <StewardAvatar emoji={t.steward.emoji} color={t.color} size="lg" className="mx-auto" />
                   <div className="mt-3 text-[14px] font-semibold">Hi, I'm {t.steward.name}.</div>
-                  <div className="text-[13px] text-muted">Ask me what's at risk, or anything about {t.name}.</div>
+                  <div className="text-[14px] text-muted">Ask me what's at risk, or anything about {t.name}.</div>
                 </div>
               </div>
             )}
@@ -136,7 +140,7 @@ function Chat({ t }: { t: TeamDetail }) {
       <div className="border-t border-line p-3">
         <div className="flex gap-1.5 mb-2 flex-wrap max-sm:flex-nowrap max-sm:scroll-x max-sm:-mx-3 max-sm:px-3">
           {(SUGGEST[t.slug] ?? SUGGEST.payments).map((s) => (
-            <button key={s} onClick={() => submit(s)} className="shrink-0 whitespace-nowrap h-6 px-2 max-sm:h-9 max-sm:px-3 max-sm:text-[12.5px] rounded-full border border-line text-[11.5px] text-muted hover:text-fg hover:border-line-strong cursor-pointer transition-colors">
+            <button key={s} onClick={() => submit(s)} className="shrink-0 whitespace-nowrap h-7 px-2.5 max-sm:h-9 max-sm:px-3 rounded-md bg-hover text-[12px] text-soft hover:text-fg cursor-pointer transition-colors">
               {s}
             </button>
           ))}
@@ -148,12 +152,11 @@ function Chat({ t }: { t: TeamDetail }) {
             submit(text);
           }}
         >
-          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Message ${t.steward.name}…`} className="h-10 max-sm:h-11 pr-12 rounded-xl" />
+          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Message ${t.steward.name}…`} className="h-10 max-sm:h-11 pr-12" />
           <button
             type="submit"
             disabled={!text.trim() || send.isPending}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 size-7 max-sm:size-8 rounded-lg grid place-items-center text-white disabled:opacity-30 cursor-pointer transition-opacity"
-            style={{ background: t.color }}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 size-7 max-sm:size-8 rounded-md grid place-items-center bg-ink text-ink-fg disabled:opacity-30 cursor-pointer transition-opacity"
             aria-label="Send"
           >
             <ArrowUp className="size-4" />
@@ -183,14 +186,14 @@ function Ask({ t }: { t: TeamDetail }) {
             if (q.trim()) ask.mutate(q.trim());
           }}
         >
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-faint" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ask as another team…" className="pl-9 pr-20 max-sm:h-11" />
           <Button type="submit" size="sm" variant="primary" className="absolute right-1 top-1/2 -translate-y-1/2 max-sm:h-9" loading={ask.isPending} disabled={!q.trim()}>
             Ask
           </Button>
         </form>
-        <div className="mt-2 flex items-center gap-x-1.5 gap-y-0 flex-wrap text-[11.5px] max-sm:text-[12.5px]">
-          <span className="text-faint">Try</span>
+        <div className="mt-2 flex items-center gap-x-1.5 gap-y-0 flex-wrap text-[12px] max-sm:text-[12px]">
+          <span className="text-muted">Try</span>
           {examples.map((e) => (
             <button
               key={e}
@@ -198,7 +201,7 @@ function Ask({ t }: { t: TeamDetail }) {
                 setQ(e);
                 ask.mutate(e);
               }}
-              className="max-sm:py-2.5 text-muted hover:text-accent underline decoration-dotted underline-offset-2 cursor-pointer"
+              className="max-sm:py-2.5 text-soft hover:text-accent underline decoration-dotted underline-offset-2 cursor-pointer"
             >
               {e}
             </button>
@@ -207,13 +210,13 @@ function Ask({ t }: { t: TeamDetail }) {
         {ask.error && <ErrorLine error={errorLine(ask.error)} className="mt-3" />}
         <AnimatePresence mode="wait">
           {res && (
-            <motion.div key={res.q} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-4 rounded-xl border border-line bg-sunken p-4">
+            <motion.div key={res.q} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="mt-4 rounded-lg bg-sunken p-4">
               <div className="flex items-center gap-2 mb-2">
                 <StewardAvatar emoji={t.steward.emoji} color={t.color} size="xs" active={false} />
-                <span className="text-[12.5px] font-medium">{t.steward.name} answers</span>
+                <span className="text-[12px] font-medium">{t.steward.name} answers</span>
                 <LabelBadge label={res.r.label} className="ml-auto" />
               </div>
-              <div className="text-[13.5px] leading-relaxed whitespace-pre-line">{res.r.answer}</div>
+              <div className="text-[14px] leading-relaxed whitespace-pre-line">{res.r.answer}</div>
               {res.r.sources.length > 0 && <Sources sources={res.r.sources} />}
               <Withheld n={res.r.withheld} />
             </motion.div>
@@ -226,15 +229,15 @@ function Ask({ t }: { t: TeamDetail }) {
 
 export function FrontDeskTab({ t }: { t: TeamDetail }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
       <div className="lg:col-span-7 min-w-0">
         <Chat t={t} />
       </div>
       <div className="lg:col-span-5 min-w-0 space-y-5">
         <Ask t={t} />
         <Card className="p-4 sm:p-5">
-          <div className="text-[13px] font-semibold">How labels work</div>
-          <div className="mt-3 space-y-2 text-[12.5px] text-muted">
+          <div className="text-[14px] font-semibold">How labels work</div>
+          <div className="mt-3 space-y-2 text-[12px] text-muted">
             {(
               [
                 ["public", "Anyone, including other teams' stewards."],

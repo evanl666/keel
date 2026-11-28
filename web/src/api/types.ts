@@ -199,6 +199,8 @@ export interface LevelInfo {
   history: { at: string; from: Level; to: Level; reason: string; actor: string }[];
 }
 
+export type KnowledgeOrigin = "manual" | "file" | "url" | "github" | "slack";
+
 export interface KnowledgeDoc {
   id: string;
   title: string;
@@ -207,12 +209,43 @@ export interface KnowledgeDoc {
   updated_at: string;
   snippet: string;
   chars: number;
+  origin: KnowledgeOrigin;
+  /** http link to the original, when there is one */
+  source_url: string | null;
+  /** YYYY-MM-DD */
+  review_by: string | null;
+  /** review_by has passed */
+  stale: boolean;
+  /** set when a KnowledgeSource owns it; then it is read-only here */
+  sync_id: string | null;
+}
+
+export type KnowledgeDocFull = KnowledgeDoc & { content: string };
+
+export interface KnowledgeSource {
+  id: string;
+  kind: "url" | "github";
+  /** a url, or "owner/repo" or "owner/repo/path/to/dir" */
+  target: string;
+  label: Label;
+  last_synced_at: string | null;
+  status: "pending" | "ok" | "error";
+  status_line: string;
+  docs: number;
+}
+
+export interface PatchKnowledgeBody {
+  title?: string;
+  content?: string;
+  label?: Label;
+  review_by?: string | null;
 }
 
 export interface AskSource {
   title: string;
   source: string;
   label: Label;
+  url: string | null;
 }
 
 export interface AskResult {
@@ -347,6 +380,8 @@ export interface SetupStep {
 export interface SetupInfo {
   steps: SetupStep[];
   slack_manifest_url: string;
+  /** When true, the admin step asks for the setup code printed in the server log. */
+  needs_setup_code?: boolean;
 }
 
 export interface CheckupFinding {
@@ -368,7 +403,99 @@ export interface CheckupReport {
   created_at: string;
 }
 
-export type TeamDetail = TeamSummary & { today: Brief | null; activity: ActivityItem[] };
+export type TeamRole = "admin" | "member";
+
+export interface TeamSettings {
+  /** "#payments" or a channel id */
+  slack_channel: string | null;
+  /** resolved id; null = not resolved yet */
+  slack_channel_id: string | null;
+  /** the org has Slack connected */
+  slack_connected: boolean;
+  github_repos: string[];
+  timezone: string;
+  brief_hour: number;
+  /** SSO group names that put people in this team */
+  sso_groups: string[];
+}
+
+export type TeamDetail = TeamSummary & {
+  today: Brief | null;
+  activity: ActivityItem[];
+  settings: TeamSettings;
+  /** null = not a member (org admins can still manage) */
+  my_role: TeamRole | null;
+};
+
+export interface PatchTeamBody {
+  name?: string;
+  slack_channel?: string;
+  github_repos?: string[];
+  timezone?: string;
+  brief_hour?: number;
+  sso_groups?: string[];
+}
+
+export interface Member {
+  user_id: string;
+  name: string;
+  email: string;
+  role: TeamRole;
+  avatar_url: string | null;
+}
+
+export type OrgRole = "org_admin" | "member";
+
+export interface PersonTeam {
+  slug: string;
+  name: string;
+  role: TeamRole;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  email: string;
+  role: OrgRole;
+  avatar_url: string | null;
+  disabled: boolean;
+  /** signed up via SSO (no password) */
+  sso: boolean;
+  slack_linked: boolean;
+  github_login: string | null;
+  teams: PersonTeam[];
+  created_at: string;
+  last_seen_at: string | null;
+}
+
+export type InviteStatus = "pending" | "accepted" | "expired" | "revoked";
+
+export interface Invite {
+  id: string;
+  email: string;
+  role: OrgRole;
+  teams: PersonTeam[];
+  invited_by: string;
+  created_at: string;
+  expires_at: string;
+  status: InviteStatus;
+}
+
+export interface CreateInviteBody {
+  email: string;
+  role: OrgRole;
+  teams: { slug: string; role: TeamRole }[];
+}
+
+/** What the public invite page sees. */
+export interface InviteInfo {
+  email: string;
+  org: string;
+  invited_by: string;
+  teams: string[];
+  status: InviteStatus;
+  sso_enabled: boolean;
+}
 
 export interface OkMessage {
   ok: boolean;

@@ -15,6 +15,11 @@ spec:
         app.kubernetes.io/component: web
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.metrics.annotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8420"
+        prometheus.io/path: /metrics
+        {{- end }}
     spec:
       # Kubernetes adds KEEL_PORT=tcp://... for a Service named keel; that clashes with Keel's KEEL_ settings.
       enableServiceLinks: false

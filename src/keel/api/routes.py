@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
+import io
+import json
 import re
 import typing
 
@@ -11,18 +14,23 @@ import pydantic
 import sqlalchemy as sa
 
 from keel import (
+    config,
     demo,
+    errors,
     feed,
     gateway,
     jobs,
     knowledge,
+    knowledge_sync,
     labels,
     learning,
     ledger,
     levels,
     models,
+    people,
     rhythm,
     services,
+    slack_lookup,
     steward,
     worker,
 )
@@ -149,7 +157,6 @@ def create_team(
     if s.scalar(sa.select(models.Team.id).where(models.Team.org_id == org.id, models.Team.slug == slug)):
         raise ValueError(f"There's already a team called {slug}.")
     n = s.scalar(sa.select(sa.func.count()).select_from(models.Team).where(models.Team.org_id == org.id)) or 0
-    channel = (body.slack_channel or "").strip()
     team = models.Team(
         org_id=org.id,
         slug=slug,
@@ -157,13 +164,11 @@ def create_team(
         color=body.color or PALETTE[n % len(PALETTE)],
         github_repos=[body.github_repo.strip()] if body.github_repo else [],
     )
-    if channel:
-        if re.fullmatch(r"[CG][A-Z0-9]{6,}", channel):
-            team.slack_channel_id = channel
-        else:
-            team.slack_channel_name = channel if channel.startswith("#") else f"#{channel}"
+    slack_lookup.set_channel(team, body.slack_channel)
     s.add(team)
     s.flush()
+    if team.slack_channel_name or team.slack_channel_id:
+        slack_lookup.resolve_team(s, team)
     level = int(org.settings.get("default_level", 1)) if level is None else level
     s.add(
         models.Steward(
@@ -206,10 +211,8 @@ def post_team(body: NewTeam, s: deps.Session, u: deps.Admin) -> dict:
     return serial.team_summary(s, team)
 
 
-@router.get("/teams/{slug}")
-def get_team(slug: str, s: deps.Session, u: deps.User) -> dict:
-    """Team home: summary, today's brief and activity."""
-    team = deps.team_or_404(s, u, slug)
+def team_detail(s: sa.orm.Session, u: models.User, team: models.Team) -> dict:
+    """TeamDetail: summary, today's brief, activity, settings and the caller's role in the team."""
     idx = serial.TeamIndex(s, u.org_id)
     today = s.scalar(
         sa.select(models.Brief)
@@ -222,11 +225,103 @@ def get_team(slug: str, s: deps.Session, u: deps.User) -> dict:
         .order_by(models.Activity.id.desc())
         .limit(OVERVIEW_ACTIVITY)
     )
+    mine = s.get(models.TeamMember, {"team_id": team.id, "user_id": u.id})
     return {
         **serial.team_summary(s, team),
         "today": serial.brief(today, idx) if today else None,
         "activity": [serial.activity(a, idx) for a in acts],
+        "settings": serial.team_settings(s, team),
+        "my_role": people.api_team_role(mine.role) if mine else None,
     }
+
+
+@router.get("/teams/{slug}")
+def get_team(slug: str, s: deps.Session, u: deps.User) -> dict:
+    """Team home: summary, today's brief and activity."""
+    return team_detail(s, u, deps.team_or_404(s, u, slug))
+
+
+REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+MAX_REPOS = 50  # Per team; the poller makes two calls per repo every interval.
+MAX_SSO_GROUPS = 20
+
+
+class TeamPatch(pydantic.BaseModel):
+    name: str | None = None
+    slack_channel: str | None = None
+    github_repos: list[str] | None = None
+    timezone: str | None = None
+    brief_hour: int | None = None
+    sso_groups: list[str] | None = None
+
+
+@router.patch("/teams/{slug}")
+def patch_team(slug: str, body: TeamPatch, s: deps.Session, u: deps.User) -> dict:
+    """Change a team's name, Slack channel, repos, timezone, brief hour or SSO groups (team admin)."""
+    import zoneinfo
+
+    team = deps.team_or_404(s, u, slug)
+    deps.require_team_admin(s, u, team.id, "change team settings")
+    changed = body.model_dump(exclude_unset=True)
+    if body.name is not None:
+        if not body.name.strip():
+            raise ValueError("A team needs a name.")
+        team.name = body.name.strip()[:120]
+    if "slack_channel" in changed:
+        before = team.slack_channel_name or team.slack_channel_id
+        slack_lookup.set_channel(team, body.slack_channel)
+        if (team.slack_channel_name or team.slack_channel_id) != before:
+            slack_lookup.resolve_team(s, team)
+    if body.github_repos is not None:
+        repos = [
+            r.strip().removeprefix("https://github.com/").strip("/") for r in body.github_repos if r.strip()
+        ]
+        bad = [r for r in repos if not REPO.fullmatch(r)]
+        if bad:
+            raise ValueError(f"Use owner/repo for each repo ({bad[0]} isn't).")
+        if len(repos) > MAX_REPOS:
+            raise ValueError(f"A team can watch up to {MAX_REPOS} repos.")
+        team.github_repos = list(dict.fromkeys(repos))
+    if body.timezone is not None:
+        try:
+            zoneinfo.ZoneInfo(body.timezone)
+        except (zoneinfo.ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(
+                f"I don't know the timezone {body.timezone!r}. Use a name like Europe/Berlin."
+            ) from exc
+        team.timezone = body.timezone
+    if body.brief_hour is not None:
+        if not 0 <= body.brief_hour <= 23:
+            raise ValueError("The brief hour is 0–23, in the team's timezone.")
+        team.brief_hour = body.brief_hour
+    if body.sso_groups is not None:
+        groups = list(dict.fromkeys(g.strip() for g in body.sso_groups if g.strip()))
+        if len(groups) > MAX_SSO_GROUPS:
+            raise ValueError(f"Up to {MAX_SSO_GROUPS} SSO groups per team.")
+        team.sso_groups = groups
+    s.flush()
+    feed.audit(
+        s, u.org_id, f"user:{u.email}", "team.updated", slug, json.dumps(changed, default=str), team.id
+    )
+    return team_detail(s, u, team)
+
+
+@router.delete("/teams/{slug}")
+def delete_team(slug: str, s: deps.Session, u: deps.Admin, confirm: str = "") -> dict:
+    """Delete a team and everything only it owns (org admin). Pass ``confirm=<slug>``. The audit log stays."""
+    team = deps.team_or_404(s, u, slug)
+    if confirm != team.slug:
+        raise ValueError(f"Type the team's slug ({team.slug}) to confirm.")
+    s.execute(sa.update(models.AuditLog).where(models.AuditLog.team_id == team.id).values(team_id=None))
+    s.execute(
+        sa.update(models.Commitment)
+        .where(models.Commitment.requester_team_id == team.id)
+        .values(requester_team_id=None)
+    )
+    feed.audit(s, u.org_id, f"user:{u.email}", "team.deleted", slug, team.name)
+    s.delete(team)
+    s.flush()
+    return {"ok": True, "message": f"Deleted {team.name}."}
 
 
 class StewardPatch(pydantic.BaseModel):
@@ -279,7 +374,7 @@ def patch_steward(slug: str, body: StewardPatch, s: deps.Session, u: deps.User) 
         )
         or 0
     )
-    return serial.steward(st, team, pending)
+    return serial.steward(st, team, pending, serial.slack_state(s, team))
 
 
 @router.get("/teams/{slug}/level")
@@ -522,16 +617,169 @@ class NewDoc(pydantic.BaseModel):
     content: str
     label: str = "internal"
     source: str | None = None
+    review_by: dt.date | None = None
 
 
 @router.post("/teams/{slug}/knowledge")
 def post_knowledge(slug: str, body: NewDoc, s: deps.Session, u: deps.User) -> dict:
-    """Add a doc to the team's knowledge."""
+    """Add a doc to the team's knowledge (a doc with the same title is replaced)."""
     team = deps.team_or_404(s, u, slug)
     deps.require_team_member(s, u, team.id, "add knowledge")
     return serial.knowledge_doc(
-        knowledge.add(s, team, body.title, body.content, body.label, body.source, actor=f"user:{u.email}")
+        knowledge.add(
+            s,
+            team,
+            body.title,
+            body.content,
+            body.label,
+            body.source,
+            actor=f"user:{u.email}",
+            review_by=body.review_by,
+        )
     )
+
+
+def _doc_or_404(
+    s: sa.orm.Session, u: models.User, slug: str, doc_id: str
+) -> tuple[models.Team, models.KnowledgeDoc]:
+    team = deps.team_or_404(s, u, slug)
+    doc = s.get(models.KnowledgeDoc, doc_id)
+    if doc is None or doc.team_id != team.id:
+        raise errors.Missing("No such doc in this team.")
+    if not labels.audience_allows(steward.clearance_for(s, u, team), doc.label):
+        raise errors.Missing("No such doc in this team.")
+    return team, doc
+
+
+@router.get("/teams/{slug}/knowledge/{doc_id}")
+def get_doc(slug: str, doc_id: str, s: deps.Session, u: deps.User) -> dict:
+    """One doc with its full text."""
+    return serial.knowledge_doc(_doc_or_404(s, u, slug, doc_id)[1], content=True)
+
+
+class DocPatch(pydantic.BaseModel):
+    title: str | None = None
+    content: str | None = None
+    label: str | None = None
+    review_by: dt.date | None = None
+
+
+@router.patch("/teams/{slug}/knowledge/{doc_id}")
+def patch_doc(slug: str, doc_id: str, body: DocPatch, s: deps.Session, u: deps.User) -> dict:
+    """Edit a hand-written doc (synced ones change at their source)."""
+    team, doc = _doc_or_404(s, u, slug, doc_id)
+    deps.require_team_member(s, u, team.id, "edit knowledge")
+    sent = body.model_dump(exclude_unset=True)
+    knowledge.update(
+        s,
+        doc,
+        f"user:{u.email}",
+        title=body.title,
+        content=body.content,
+        label=body.label,
+        review_by=body.review_by if "review_by" in sent else "keep",
+    )
+    return serial.knowledge_doc(doc)
+
+
+@router.delete("/teams/{slug}/knowledge/{doc_id}")
+def delete_doc(slug: str, doc_id: str, s: deps.Session, u: deps.User) -> dict:
+    """Remove a doc. A synced doc comes back on the next sync unless its source is removed."""
+    team, doc = _doc_or_404(s, u, slug, doc_id)
+    deps.require_team_member(s, u, team.id, "remove knowledge")
+    title = doc.title
+    knowledge.delete(s, doc, f"user:{u.email}")
+    return {"ok": True, "message": f"Removed {title}."}
+
+
+@router.post("/teams/{slug}/knowledge/{doc_id}/reviewed")
+def review_doc(slug: str, doc_id: str, s: deps.Session, u: deps.User) -> dict:
+    """Someone checked the doc is still right: the next review is a quarter out."""
+    team, doc = _doc_or_404(s, u, slug, doc_id)
+    deps.require_team_member(s, u, team.id, "review knowledge")
+    return serial.knowledge_doc(knowledge.mark_reviewed(s, doc, f"user:{u.email}"))
+
+
+def _source_docs(s: sa.orm.Session, source_id: str) -> int:
+    return (
+        s.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.KnowledgeDoc)
+            .where(models.KnowledgeDoc.sync_id == source_id)
+        )
+        or 0
+    )
+
+
+@router.get("/teams/{slug}/knowledge-sources")
+def list_sources(slug: str, s: deps.Session, u: deps.User) -> list[dict]:
+    """Web pages and GitHub folders the team's knowledge syncs from."""
+    team = deps.team_or_404(s, u, slug)
+    rows = s.scalars(
+        sa.select(models.KnowledgeSource)
+        .where(models.KnowledgeSource.team_id == team.id)
+        .order_by(models.KnowledgeSource.created_at)
+    )
+    return [serial.knowledge_source(r, _source_docs(s, r.id)) for r in rows]
+
+
+class NewSource(pydantic.BaseModel):
+    kind: typing.Literal["url", "github"]
+    target: str
+    label: str = "internal"
+
+
+@router.post("/teams/{slug}/knowledge-sources")
+def post_source(slug: str, body: NewSource, s: deps.Session, u: deps.User) -> dict:
+    """Start syncing a page or a GitHub folder. The first sync runs on the worker right away."""
+    team = deps.team_or_404(s, u, slug)
+    deps.require_team_admin(s, u, team.id, "add a knowledge source")
+    src = knowledge_sync.add_source(s, team, body.kind, body.target, body.label, f"user:{u.email}")
+    jobs.enqueue(s, u.org_id, "sync_knowledge", {"source": src.id}, dedupe_key=f"ksync:{src.id}:now")
+    return serial.knowledge_source(src, 0)
+
+
+def _source_or_404(
+    s: sa.orm.Session, u: models.User, slug: str, source_id: str
+) -> tuple[models.Team, models.KnowledgeSource]:
+    team = deps.team_or_404(s, u, slug)
+    src = s.get(models.KnowledgeSource, source_id)
+    if src is None or src.team_id != team.id:
+        raise errors.Missing("No such source in this team.")
+    return team, src
+
+
+@router.post("/teams/{slug}/knowledge-sources/{source_id}/sync")
+def sync_source(slug: str, source_id: str, s: deps.Session, u: deps.User) -> dict:
+    """Sync now (blocks until done; one page or one folder)."""
+    team, src = _source_or_404(s, u, slug, source_id)
+    deps.require_team_member(s, u, team.id, "sync knowledge")
+    knowledge_sync.sync(s, src)
+    return serial.knowledge_source(src, _source_docs(s, src.id))
+
+
+@router.delete("/teams/{slug}/knowledge-sources/{source_id}")
+def delete_source(slug: str, source_id: str, s: deps.Session, u: deps.User) -> dict:
+    """Stop syncing and remove the docs it brought in."""
+    team, src = _source_or_404(s, u, slug, source_id)
+    deps.require_team_admin(s, u, team.id, "remove a knowledge source")
+    n = _source_docs(s, src.id)
+    feed.audit(
+        s,
+        u.org_id,
+        f"user:{u.email}",
+        "knowledge.source_removed",
+        f"{src.kind}:{src.target}",
+        f"{n} docs",
+        team.id,
+    )
+    s.execute(sa.delete(models.KnowledgeDoc).where(models.KnowledgeDoc.sync_id == src.id))
+    s.delete(src)
+    s.flush()
+    return {
+        "ok": True,
+        "message": f"Stopped syncing {src.target} and removed {n} doc{'s' if n != 1 else ''}.",
+    }
 
 
 class Ask(pydantic.BaseModel):
@@ -559,7 +807,15 @@ def ask(slug: str, body: Ask, s: deps.Session, u: deps.User) -> dict:
         "open_question": reply.gap is not None,
         "label": found.label,
         "withheld": found.withheld,
-        "sources": [{"title": p.title, "source": p.source, "label": p.label} for p in found.passages],
+        "sources": [
+            {
+                "title": p.title,
+                "source": p.source,
+                "label": p.label,
+                "url": knowledge.link(p, team.slug, config.get().base_url),
+            }
+            for p in found.passages
+        ],
     }
 
 
@@ -741,14 +997,58 @@ def post_chat(slug: str, body: ChatBody, s: deps.Session, u: deps.User) -> list[
 # ---------------------------------------------------------------- audit, checkups, demo
 
 
+def _audit_query(s: sa.orm.Session, u: models.User, team: str | None) -> sa.Select:
+    """Org admins see everything; everyone else sees only their own teams' rows."""
+    q = sa.select(models.AuditLog).where(models.AuditLog.org_id == u.org_id)
+    if team:
+        t = deps.team_or_404(s, u, team)
+        deps.require_team_member(s, u, t.id, "read this team's audit log")
+        q = q.where(models.AuditLog.team_id == t.id)
+    elif u.role != "org_admin":
+        mine = sa.select(models.TeamMember.team_id).where(models.TeamMember.user_id == u.id)
+        q = q.where(models.AuditLog.team_id.in_(mine))
+    return q.order_by(models.AuditLog.at.desc())
+
+
 @router.get("/audit")
 def list_audit(s: deps.Session, u: deps.User, team: str | None = None) -> list[dict]:
     """Audit log, newest first."""
-    q = sa.select(models.AuditLog).where(models.AuditLog.org_id == u.org_id)
-    if team:
-        q = q.where(models.AuditLog.team_id == deps.team_or_404(s, u, team).id)
     idx = serial.TeamIndex(s, u.org_id)
-    return [serial.audit(a, idx) for a in s.scalars(q.order_by(models.AuditLog.at.desc()).limit(AUDIT_LIMIT))]
+    return [serial.audit(a, idx) for a in s.scalars(_audit_query(s, u, team).limit(AUDIT_LIMIT))]
+
+
+AUDIT_FIELDS = ("at", "actor", "action", "target", "detail", "team_slug")
+
+
+@router.get("/audit/export")
+def export_audit(
+    s: deps.Session,
+    u: deps.Admin,
+    format: typing.Literal["csv", "json"] = "csv",
+    since: dt.date | None = None,
+) -> fastapi.Response:
+    """The whole audit log (or since a date) as CSV or JSON lines, for your SIEM or an auditor (org admin)."""
+    q = _audit_query(s, u, None)
+    if since:
+        q = q.where(models.AuditLog.at >= dt.datetime.combine(since, dt.time(), dt.UTC))
+    idx = serial.TeamIndex(s, u.org_id)
+    rows = [serial.audit(a, idx) for a in s.scalars(q)]
+    feed.audit(s, u.org_id, f"user:{u.email}", "audit.exported", format, f"{len(rows)} rows")
+    stamp = models.utcnow().strftime("%Y%m%d")
+    if format == "json":
+        body = "".join(json.dumps({k: r.get(k) for k in AUDIT_FIELDS}) + "\n" for r in rows)
+        media, ext = "application/x-ndjson", "jsonl"
+    else:
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=AUDIT_FIELDS, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+        body, media, ext = buf.getvalue(), "text/csv", "csv"
+    return fastapi.Response(
+        body,
+        media_type=media,
+        headers={"content-disposition": f'attachment; filename="keel-audit-{stamp}.{ext}"'},
+    )
 
 
 class CheckupBody(pydantic.BaseModel):

@@ -73,7 +73,7 @@ export function LedgerTab({ t }: { t: TeamDetail }) {
         <CommitmentList items={items} teams={teams} />
       ) : (
         <Card>
-          <EmptyState icon="📒" title="Nothing in the ledger" line={`${t.steward.name} adds promises it hears in Slack and GitHub. You can add one above.`} />
+          <EmptyState title="Nothing in the ledger" line={`${t.steward.name} adds promises it hears in Slack and GitHub. You can add one above.`} />
         </Card>
       )}
     </div>
@@ -100,10 +100,10 @@ export function ServicesTab({ t }: { t: TeamDetail }) {
   return (
     <div>
       <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-        <div className="text-[13px] text-muted">
+        <div className="text-[14px] text-muted">
           {t.steward.name} checks each service every minute and opens an incident after 3 failures in a row.
         </div>
-        <Button size="md" className="shrink-0" icon={<Plus className="size-3.5" />} onClick={() => setOpen((o) => !o)}>
+        <Button size="md" variant="primary" className="shrink-0" icon={<Plus className="size-3.5" />} onClick={() => setOpen((o) => !o)}>
           Watch a service
         </Button>
       </div>
@@ -126,19 +126,19 @@ export function ServicesTab({ t }: { t: TeamDetail }) {
         </Card>
       )}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Skeleton className="h-[300px] rounded-xl" />
           <Skeleton className="h-[300px] rounded-xl" />
         </div>
       ) : data?.length ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {data.map((s, i) => (
             <ServiceCard key={s.id} s={s} team={t} showTeam={false} i={i} />
           ))}
         </div>
       ) : (
         <Card>
-          <EmptyState icon="🩺" title="No services yet" line={`Give ${t.steward.name} a health URL and it will watch it.`} action={<Button variant="primary" onClick={() => setOpen(true)}>Watch a service</Button>} />
+          <EmptyState title="No services yet" line={`Give ${t.steward.name} a health URL and it will watch it.`} action={<Button variant="primary" onClick={() => setOpen(true)}>Watch a service</Button>} />
         </Card>
       )}
     </div>

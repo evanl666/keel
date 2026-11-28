@@ -5,7 +5,7 @@ import { ChevronRight } from "lucide-react";
 import type { Commitment, CommitmentStatus, TeamSummary } from "../api/types";
 import { cn } from "../lib/utils";
 import { DueText, LabelBadge, PriorityIcon, RiskDot, STATUS_META, StatusIcon, TeamFlow } from "./keel";
-import { Tooltip } from "./ui";
+import { Avatar, Tooltip } from "./ui";
 
 export const STATUS_ORDER: CommitmentStatus[] = ["in_progress", "blocked", "accepted", "proposed", "done", "dropped", "declined"];
 const CLOSED = new Set<CommitmentStatus>(["done", "dropped", "declined"]);
@@ -21,13 +21,11 @@ export function sortCommitments(list: Commitment[]) {
 }
 
 function Person({ name }: { name: string | null }) {
-  if (!name) return <Tooltip content="No owner yet"><span className="grid size-[22px] place-items-center rounded-full border border-dashed border-line-strong text-[10px] text-faint">?</span></Tooltip>;
-  const initials = name.split(" ").map((p) => p[0]).join("").slice(0, 2);
-  const hue = [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
+  if (!name) return <Tooltip content="No owner yet"><span className="grid size-[22px] place-items-center rounded-full border border-dashed border-line-strong text-[12px] text-faint">?</span></Tooltip>;
   return (
     <Tooltip content={name}>
-      <span className="grid size-[22px] place-items-center rounded-full text-[9.5px] font-semibold text-white/95" style={{ background: `linear-gradient(135deg, hsl(${hue} 55% 58%), hsl(${(hue + 40) % 360} 55% 45%))` }}>
-        {initials}
+      <span className="inline-flex">
+        <Avatar name={name} size={22} />
       </span>
     </Tooltip>
   );
@@ -49,9 +47,9 @@ export function CommitmentRow({ c, teams, showTeams = true }: { c: Commitment; t
     >
       <RiskDot risk={c.risk} />
       <span className="max-sm:hidden inline-flex shrink-0"><PriorityIcon priority={c.priority} /></span>
-      <span className="w-11 shrink-0 font-mono text-[12px] text-faint">{c.key}</span>
+      <span className="w-11 shrink-0 font-mono text-[12px] text-muted">{c.key}</span>
       <StatusIcon status={c.status} />
-      <span className={cn("min-w-0 flex-1 truncate text-[13.5px]", CLOSED.has(c.status) ? "text-faint" : "text-fg")}>{c.title}</span>
+      <span className={cn("min-w-0 flex-1 truncate text-[14px]", CLOSED.has(c.status) ? "text-faint" : "text-fg")}>{c.title}</span>
       {(c.label === "confidential" || c.label === "restricted") && <LabelBadge label={c.label} className="max-sm:hidden" />}
       {showTeams && (
         <span className="hidden lg:inline-flex">
@@ -60,7 +58,7 @@ export function CommitmentRow({ c, teams, showTeams = true }: { c: Commitment; t
       )}
       <span className="max-sm:hidden inline-flex shrink-0"><Person name={c.owner_person} /></span>
       <span className="sm:w-[86px] text-right shrink-0">
-        {CLOSED.has(c.status) ? <span className="text-[12.5px] text-faint">{STATUS_META[c.status].label}</span> : <DueText iso={c.due_at} />}
+        {CLOSED.has(c.status) ? <span className="text-[12px] text-faint">{STATUS_META[c.status].label}</span> : <DueText iso={c.due_at} />}
       </span>
     </motion.div>
   );
@@ -72,23 +70,23 @@ export function CommitmentList({ items, teams, showTeams = true }: { items: Comm
     return STATUS_ORDER.map((s) => [s, sortCommitments(items.filter((c) => c.status === s))] as const).filter(([, l]) => l.length);
   }, [items]);
   return (
-    <div className="rounded-xl border border-line bg-panel shadow-card overflow-hidden">
+    <div className="rounded-xl border border-line bg-panel overflow-hidden">
       {groups.map(([s, list]) => {
         const closed = collapsed[s];
         return (
           <div key={s} className="border-t border-line first:border-t-0">
             <button
               onClick={() => setCollapsed((c) => ({ ...c, [s]: !c[s] }))}
-              className="w-full flex items-center gap-2.5 h-10 lg:h-9 px-4 bg-panel-2 text-left cursor-pointer hover:bg-hover transition-colors"
+              className="w-full flex items-center gap-2.5 h-10 lg:h-9 px-4 bg-sunken text-left cursor-pointer hover:bg-hover transition-colors"
             >
-              <ChevronRight className={cn("size-3.5 text-faint transition-transform", !closed && "rotate-90")} />
+              <ChevronRight className={cn("size-3.5 text-muted transition-transform duration-150", !closed && "rotate-90")} />
               <StatusIcon status={s} />
-              <span className="text-[12.5px] font-semibold">{STATUS_META[s].label}</span>
-              <span className="text-[12px] text-faint tabular">{list.length}</span>
+              <span className="text-[12px] font-semibold">{STATUS_META[s].label}</span>
+              <span className="text-[12px] text-muted tabular">{list.length}</span>
             </button>
             <AnimatePresence initial={false}>
               {!closed && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden border-t border-line">
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden border-t border-line">
                   <AnimatePresence initial={false}>
                     {list.map((c) => (
                       <CommitmentRow key={c.key} c={c} teams={teams} showTeams={showTeams} />
@@ -113,11 +111,11 @@ export function CommitmentBoard({ items, teams }: { items: Commitment[]; teams: 
       {BOARD.map((s) => {
         const list = sortCommitments(items.filter((c) => c.status === s));
         return (
-          <div key={s} className="w-[min(272px,80vw)] shrink-0 snap-start lg:w-auto lg:shrink min-w-0 rounded-xl border border-line bg-sunken/60 p-2">
+          <div key={s} className="w-[min(272px,80vw)] shrink-0 snap-start lg:w-auto lg:shrink min-w-0 rounded-xl bg-sunken p-2">
             <div className="flex items-center gap-2 px-1.5 h-8">
               <StatusIcon status={s} />
-              <span className="text-[12.5px] font-semibold">{STATUS_META[s].label}</span>
-              <span className="text-[12px] text-faint tabular">{list.length}</span>
+              <span className="text-[12px] font-semibold">{STATUS_META[s].label}</span>
+              <span className="text-[12px] text-muted tabular">{list.length}</span>
             </div>
             <div className="space-y-2 mt-1">
               <AnimatePresence initial={false}>
@@ -126,26 +124,26 @@ export function CommitmentBoard({ items, teams }: { items: Commitment[]; teams: 
                     layout
                     layoutId={`card-${c.key}`}
                     key={c.key}
-                    initial={{ opacity: 0, scale: 0.97 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.97 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
                     onClick={() => nav(`/commitments/${c.key}`)}
-                    className="w-full text-left rounded-lg border border-line bg-panel p-3 shadow-soft hover:border-line-strong transition-colors cursor-pointer"
+                    className="w-full text-left rounded-lg border border-line bg-panel p-3 hover:border-line-strong transition-colors cursor-pointer"
                   >
-                    <div className="flex items-center gap-2 text-[11.5px] text-faint">
+                    <div className="flex items-center gap-2 text-[12px] text-muted">
                       <RiskDot risk={c.risk} />
                       <span className="font-mono">{c.key}</span>
                       <span className="ml-auto"><PriorityIcon priority={c.priority} /></span>
                     </div>
-                    <div className={cn("mt-1.5 text-[13px] leading-snug line-clamp-2", s === "done" ? "text-muted" : "text-fg")}>{c.title}</div>
+                    <div className={cn("mt-1.5 text-[14px] leading-snug line-clamp-2", s === "done" ? "text-muted" : "text-fg")}>{c.title}</div>
                     <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
                       <TeamFlow owner={c.owner_team} requester={c.requester_team} teams={teams} />
-                      {s !== "done" && <DueText iso={c.due_at} className="text-[11.5px] ml-auto whitespace-nowrap" />}
+                      {s !== "done" && <DueText iso={c.due_at} className="text-[12px] ml-auto whitespace-nowrap" />}
                     </div>
                   </motion.button>
                 ))}
               </AnimatePresence>
-              {!list.length && <div className="text-center text-[12px] text-faint py-6">Empty</div>}
+              {!list.length && <div className="text-center text-[12px] text-muted py-6">Nothing here</div>}
             </div>
           </div>
         );

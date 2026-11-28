@@ -48,7 +48,16 @@ const shots = [
   },
   { name: "team-learning-empty", path: "/teams/mobile/learning" },
   { name: "team-level", path: "/teams/payments/level" },
+  {
+    name: "team-knowledge-doc",
+    path: "/teams/payments/knowledge",
+    act: async (p) => {
+      await p.getByText("On-call handbook").first().click();
+      await sleep(500);
+    },
+  },
   { name: "team-settings", path: "/teams/platform/settings" },
+  { name: "team-settings-full", path: "/teams/payments/settings", full: true },
   { name: "ledger", path: "/ledger", full: true },
   { name: "ledger-board", path: "/ledger?view=board", full: true },
   { name: "commitment", path: "/commitments/C-88", full: true },
@@ -132,6 +141,32 @@ const shots = [
       await sleep(700);
     },
   },
+  { name: "people", path: "/people", full: true },
+  {
+    name: "people-invite",
+    path: "/people",
+    act: async (p) => {
+      await p.getByRole("button", { name: "Invite people" }).first().click();
+      await sleep(300);
+      await p.getByPlaceholder("name@acme.dev").fill("rosa@acme.dev");
+      await p.getByRole("checkbox").first().check();
+      await sleep(200);
+    },
+  },
+  {
+    name: "people-invite-link",
+    path: "/people",
+    act: async (p) => {
+      await p.getByRole("button", { name: "Invite people" }).first().click();
+      await sleep(300);
+      await p.getByPlaceholder("name@acme.dev").fill("jo@acme.dev");
+      await p.getByRole("button", { name: "Create invite" }).click();
+      await p.getByText("It works once and expires in 7 days", { exact: false }).waitFor();
+      await sleep(300);
+    },
+  },
+  { name: "invite", path: "/invite/demo", signedOut: true },
+  { name: "invite-expired", path: "/invite/old", signedOut: true },
   { name: "login", path: "/login", signedOut: true },
   { name: "not-found", path: "/no-such-page" },
   {

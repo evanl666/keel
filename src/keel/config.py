@@ -54,12 +54,36 @@ class Settings(pydantic_settings.BaseSettings):
     github_installation_id: str = ""
     github_webhook_secret: str = ""
     github_api_url: str = "https://api.github.com"
+    github_poll: str = pydantic.Field(
+        default="auto",
+        description="auto: poll team repos when no webhook secret is set. on: always poll. off: never.",
+    )
 
     # Enterprise SSO (OIDC).
     oidc_issuer: str = ""
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
     oidc_admin_group: str = ""
+    oidc_groups_claim: str = "groups"
+
+    # Security and retention.
+    setup_code: str = pydantic.Field(
+        default="",
+        description="Code needed to create the first admin. Derived from the secret key when empty.",
+    )
+    login_max_failures: int = 5  # Per email (or IP) per lockout window; enough for typos, too few to guess.
+    login_lockout_minutes: int = 15
+    audit_retention_days: int = pydantic.Field(
+        default=0, description="Delete audit rows older than this many days. 0 keeps them forever."
+    )
+    worker_metrics_port: int = pydantic.Field(
+        default=9464,
+        description="Prometheus port for `keel worker` (9464 is the OpenTelemetry default). 0 = off.",
+    )
+
+    backup_dir: str = pydantic.Field(
+        default=".", description="Where `keel backup` writes when no -o is given (/backups in the container)."
+    )
 
     # L4 runbooks run only through an outbound-only runner holding this token.
     runner_token: str = ""

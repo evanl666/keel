@@ -10,7 +10,11 @@ import type {
   CommitmentEvent,
   Duty,
   Gap,
+  Invite,
   KnowledgeDoc,
+  KnowledgeSource,
+  Person,
+  TeamSettings,
   Lesson,
   Level,
   LevelInfo,
@@ -345,28 +349,97 @@ export function makeServices(): Record<string, Service[]> {
   };
 }
 
+const day = (offsetDays: number) => new Date(NOW + offsetDays * DAY).toISOString().slice(0, 10);
+
+type DocExtra = Partial<Pick<KnowledgeDoc, "origin" | "source_url" | "review_by" | "sync_id">>;
+
 export function makeKnowledge(): Record<string, KnowledgeDoc[]> {
-  const d = (id: string, title: string, source: string, label: KnowledgeDoc["label"], upd: number, snippet: string, chars: number): KnowledgeDoc => ({
-    id, title, source, label, updated_at: ago(upd), snippet, chars,
-  });
+  const d = (id: string, title: string, source: string, label: KnowledgeDoc["label"], upd: number, snippet: string, chars: number, x: DocExtra = {}): KnowledgeDoc => {
+    const review_by = x.review_by === undefined ? day(60) : x.review_by;
+    return {
+      id, title, source, label, updated_at: ago(upd), snippet, chars,
+      origin: x.origin ?? "manual",
+      source_url: x.source_url ?? null,
+      review_by,
+      stale: !!review_by && review_by < day(0),
+      sync_id: x.sync_id ?? null,
+    };
+  };
   return {
     payments: [
-      d("kd_1", "3DS fallback FAQ", "Notion · Payments/FAQ", "public", 3 * DAY, "When 3DS2 isn't available, we fall back to 3DS1 for cards issued before 2019, otherwise decline with code 3DS_UNAVAILABLE.", 4210),
-      d("kd_2", "Refund policy runbook", "GitHub · acme/payments-docs", "internal", 6 * DAY, "Refunds over $5,000 need a second approver. Partial refunds keep the original idempotency key with a suffix.", 8932),
-      d("kd_3", "Webhook secret rotation guide", "GitHub · acme/payments-docs", "confidential", 2 * DAY, "Generate the new secret in Vault, enable dual-signing for 48h, notify partners, then revoke.", 3120),
-      d("kd_4", "PCI scope map", "Confluence · Security", "restricted", 12 * DAY, "Systems in cardholder data scope and the controls that cover each one.", 15402),
-      d("kd_5", "On-call handbook", "Notion · Payments/On-call", "internal", 20 * DAY, "Pages go to the primary first. If no ack in 10 minutes, Pip pages the secondary and posts in #payments-incidents.", 6721),
-      d("kd_6", "Partner API changelog", "Web · docs.acme.com", "public", 1 * DAY, "v2024-11: new payout.reconciled event, deprecated charge.captured_partial.", 2390),
+      d("kd_1", "3DS fallback FAQ", "Notion · Payments/FAQ", "public", 3 * DAY, "When 3DS2 isn't available, we fall back to 3DS1 for cards issued before 2019, otherwise decline with code 3DS_UNAVAILABLE.", 4210, { origin: "url", source_url: "https://www.notion.so/acme/3DS-fallback-FAQ", review_by: day(41) }),
+      d("kd_2", "Refund policy runbook", "GitHub · acme/payments-docs", "internal", 6 * DAY, "Refunds over $5,000 need a second approver. Partial refunds keep the original idempotency key with a suffix.", 8932, { origin: "github", source_url: "https://github.com/acme/payments-docs/blob/main/runbooks/refunds.md", sync_id: "ks_1", review_by: null }),
+      d("kd_3", "Webhook secret rotation guide", "GitHub · acme/payments-docs", "confidential", 2 * DAY, "Generate the new secret in Vault, enable dual-signing for 48h, notify partners, then revoke.", 3120, { origin: "github", source_url: "https://github.com/acme/payments-docs/blob/main/runbooks/webhook-secrets.md", sync_id: "ks_1", review_by: null }),
+      d("kd_4", "PCI scope map", "Confluence · Security", "restricted", 12 * DAY, "Systems in cardholder data scope and the controls that cover each one.", 15402, { origin: "file", review_by: day(18) }),
+      d("kd_5", "On-call handbook", "Notion · Payments/On-call", "internal", 20 * DAY, "Pages go to the primary first. If no ack in 10 minutes, Pip pages the secondary and posts in #payments-incidents.", 6721, { origin: "manual", review_by: day(-4) }),
+      d("kd_6", "Partner API changelog", "Web · docs.acme.com", "public", 1 * DAY, "v2024-11: new payout.reconciled event, deprecated charge.captured_partial.", 2390, { origin: "url", source_url: "https://docs.acme.com/changelog", sync_id: "ks_2", review_by: null }),
+      d("kd_12", "Chargeback answers we give", "Slack · #payments", "internal", 9 * DAY, "Disputes under $50 are auto-accepted. Above that, Maya decides within 2 business days.", 1180, { origin: "slack", source_url: "https://acme.slack.com/archives/C024PAY/p1712", review_by: day(-11) }),
     ],
     platform: [
-      d("kd_7", "Postgres upgrade playbook", "GitHub · acme/infra", "internal", 4 * DAY, "Rebuild replicas first, then fail over during the Tuesday window. Logical slots must be recreated after cutover.", 7210),
-      d("kd_8", "Request a staging env", "Notion · Platform/Self-serve", "public", 9 * DAY, "Ask in #platform or tell your steward. Envs are ready in about a day.", 1840),
-      d("kd_9", "Prod access policy", "Confluence · Security", "restricted", 30 * DAY, "Who gets production write access, for how long, and who signs off.", 5120),
+      d("kd_7", "Postgres upgrade playbook", "GitHub · acme/infra", "internal", 4 * DAY, "Rebuild replicas first, then fail over during the Tuesday window. Logical slots must be recreated after cutover.", 7210, { origin: "github", source_url: "https://github.com/acme/infra/blob/main/docs/pg-upgrade.md", sync_id: "ks_3", review_by: null }),
+      d("kd_8", "Request a staging env", "Notion · Platform/Self-serve", "public", 9 * DAY, "Ask in #platform or tell your steward. Envs are ready in about a day.", 1840, { origin: "manual", review_by: day(25) }),
+      d("kd_9", "Prod access policy", "Confluence · Security", "restricted", 30 * DAY, "Who gets production write access, for how long, and who signs off.", 5120, { origin: "file", review_by: day(-2) }),
     ],
     mobile: [
-      d("kd_10", "Release train calendar", "Notion · Mobile", "internal", 2 * DAY, "Branch cut Mondays 10:00, store submit Wednesdays, staged rollout 1% → 10% → 100%.", 2280),
-      d("kd_11", "Crash triage guide", "GitHub · acme/mobile-app", "internal", 15 * DAY, "Anything above 0.5% crash-free drop pages the release captain.", 3410),
+      d("kd_10", "Release train calendar", "Notion · Mobile", "internal", 2 * DAY, "Branch cut Mondays 10:00, store submit Wednesdays, staged rollout 1% → 10% → 100%.", 2280, { origin: "url", source_url: "https://www.notion.so/acme/Release-train", review_by: day(70) }),
+      d("kd_11", "Crash triage guide", "GitHub · acme/mobile-app", "internal", 15 * DAY, "Anything above 0.5% crash-free drop pages the release captain.", 3410, { origin: "manual", review_by: day(12) }),
     ],
+  };
+}
+
+/** Full text for a doc: the snippet plus a little made-up structure around it. */
+export function docContent(doc: KnowledgeDoc): string {
+  return `# ${doc.title}\n\n${doc.snippet}\n\n## Who to ask\n\nThe team channel first. If it's urgent, page the on-call.\n\n## Notes\n\n- Keep this short and current.\n- If something here is wrong, fix it here so the steward stops repeating it.`;
+}
+
+export function makeKnowledgeSources(): Record<string, KnowledgeSource[]> {
+  return {
+    payments: [
+      { id: "ks_1", kind: "github", target: "acme/payments-docs/runbooks", label: "internal", last_synced_at: ago(40 * MIN), status: "ok", status_line: "Synced 2 docs.", docs: 2 },
+      { id: "ks_2", kind: "url", target: "https://docs.acme.com/changelog", label: "public", last_synced_at: ago(3 * HOUR), status: "ok", status_line: "Synced 1 page.", docs: 1 },
+      { id: "ks_4", kind: "url", target: "https://wiki.acme.internal/payments/limits", label: "internal", last_synced_at: ago(1 * DAY), status: "error", status_line: "The page answered 403. Keel can't read pages behind a login.", docs: 0 },
+    ],
+    platform: [
+      { id: "ks_3", kind: "github", target: "acme/infra/docs", label: "internal", last_synced_at: ago(2 * HOUR), status: "ok", status_line: "Synced 1 doc.", docs: 1 },
+    ],
+    mobile: [],
+  };
+}
+
+export function makePeople(): Person[] {
+  const p = (id: string, name: string, email: string, role: Person["role"], teams: Person["teams"], x: Partial<Person> = {}): Person => ({
+    id, name, email, role, avatar_url: null, disabled: false, sso: false, slack_linked: true, github_login: null, teams,
+    created_at: ago(90 * DAY), last_seen_at: ago(2 * HOUR), ...x,
+  });
+  const pay = (role: "admin" | "member" = "member") => ({ slug: "payments", name: "Payments", role });
+  const plat = (role: "admin" | "member" = "member") => ({ slug: "platform", name: "Platform", role });
+  const mob = (role: "admin" | "member" = "member") => ({ slug: "mobile", name: "Mobile", role });
+  return [
+    p("u_evan", "Evan", "evan@acme.dev", "org_admin", [pay("admin"), plat("member")], { github_login: "evan", last_seen_at: ago(1 * MIN), created_at: ago(120 * DAY) }),
+    p("u_maya", "Maya Chen", "maya@acme.dev", "org_admin", [pay("admin")], { github_login: "mayachen", sso: true, last_seen_at: ago(25 * MIN) }),
+    p("u_diego", "Diego Ramos", "diego@acme.dev", "member", [pay()], { github_login: "dramos", sso: true, last_seen_at: ago(3 * HOUR) }),
+    p("u_priya", "Priya Nair", "priya@acme.dev", "member", [pay(), plat()], { github_login: "priyanair", sso: true, last_seen_at: ago(1 * DAY) }),
+    p("u_lena", "Lena Fischer", "lena@acme.dev", "member", [plat("admin")], { github_login: "lfischer", sso: true, last_seen_at: ago(40 * MIN) }),
+    p("u_sam", "Sam Okafor", "sam@acme.dev", "member", [plat()], { github_login: "samok", slack_linked: false, last_seen_at: ago(5 * DAY) }),
+    p("u_ana", "Ana Lima", "ana@acme.dev", "member", [mob("admin")], { sso: true, last_seen_at: ago(6 * HOUR) }),
+    p("u_kenji", "Kenji Watanabe", "kenji@acme.dev", "member", [mob()], { github_login: "kenjiw", last_seen_at: ago(2 * DAY) }),
+    p("u_tom", "Tom Becker", "tom@acme.dev", "member", [], { disabled: true, slack_linked: false, last_seen_at: ago(45 * DAY), created_at: ago(200 * DAY) }),
+  ];
+}
+
+export function makeInvites(): Invite[] {
+  return [
+    { id: "inv_2", email: "rosa@acme.dev", role: "member", teams: [{ slug: "mobile", name: "Mobile", role: "member" }], invited_by: "Ana Lima", created_at: ago(5 * HOUR), expires_at: iso(7 * DAY - 5 * HOUR), status: "pending" },
+    { id: "inv_1", email: "jon@contractor.io", role: "member", teams: [{ slug: "platform", name: "Platform", role: "member" }], invited_by: "Evan", created_at: ago(2 * DAY), expires_at: iso(5 * DAY), status: "pending" },
+  ];
+}
+
+export function makeTeamSettings(): Record<string, TeamSettings> {
+  const base = { slack_connected: true, timezone: "Europe/Berlin", brief_hour: 9 };
+  return {
+    payments: { ...base, slack_channel: "#payments", slack_channel_id: "C024PAY", github_repos: ["acme/payments-api", "acme/payments-docs"], sso_groups: ["eng-payments"] },
+    platform: { ...base, slack_channel: "#platform", slack_channel_id: "C031PLT", github_repos: ["acme/infra"], timezone: "UTC", sso_groups: ["eng-platform"] },
+    mobile: { ...base, slack_channel: "#mobile-team", slack_channel_id: null, github_repos: ["acme/mobile-app"], timezone: "America/Sao_Paulo", brief_hour: 10, sso_groups: [] },
   };
 }
 
@@ -510,7 +583,7 @@ export function makeChat(): Record<string, ChatMessage[]> {
         role: "steward",
         text: "Diego is primary and Priya is secondary until 09:00 tomorrow. If a page isn't acked in 10 minutes I page Priya.",
         at: ago(20 * MIN - 3000),
-        sources: [{ title: "On-call handbook", source: "Notion · Payments/On-call", label: "internal" }],
+        sources: [{ title: "On-call handbook", source: "Notion · Payments/On-call", label: "internal", url: null }],
       },
     ],
     platform: [

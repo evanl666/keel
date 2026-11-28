@@ -9,10 +9,25 @@ import typing
 
 import sqlalchemy as sa
 
-from keel import connections, db, inbox, learning, ledger, models
+from keel import connections, db, inbox, learning, ledger, models, slack_lookup, steward
 
 log = logging.getLogger(__name__)
 USER_CACHE_SIZE = 2048  # Display names for one org's active Slack users; small and saves a call per message.
+HELP = (
+    "*/keel* — your team's steward\n"
+    "• `/keel` or `/keel status` — open work and what's at risk\n"
+    "• `/keel ask <question>` — a private answer from the team's knowledge, with sources\n"
+    "• `/keel teach <rule>` — a rule the steward follows from now on\n"
+    "• `/keel <anything else>` — a request; the steward replies in the team channel and tags you"
+)
+NO_TEAM_COMMAND = (
+    "I don't know which team this is for. Run it in a team's channel, or ask an admin to add you to a team "
+    "in Keel → People (with the same email you use in Slack)."
+)
+NO_TEAM_DM = (
+    "Hi! I can't tell which team you're on yet. Ask a Keel admin to add you to a team in Keel → People, "
+    "using the same email as your Slack account. Then DM me again."
+)
 
 
 class SlackBridge:
@@ -28,6 +43,7 @@ class SlackBridge:
         self.app.event("app_mention")(self._on_mention)
         self.app.event("message")(self._on_message)
         self.app.command("/keel")(self._on_command)
+        self._explained: set[str] = set()
 
     @functools.lru_cache(maxsize=USER_CACHE_SIZE)  # noqa: B019 - one bridge per process
     def _name(self, user_id: str) -> str:
@@ -40,15 +56,21 @@ class SlackBridge:
     def _record(self, event: dict[str, typing.Any], directed: bool) -> None:
         if event.get("bot_id") or event.get("subtype") not in (None, "thread_broadcast", "file_share"):
             return
-        channel, ts = event.get("channel", ""), event.get("ts", "")
+        channel, ts, user = event.get("channel", ""), event.get("ts", ""), event.get("user", "")
+        is_dm = event.get("channel_type") == "im" or channel.startswith("D")
         with db.session() as s:
             team = inbox.team_for_channel(s, channel)
-            if team is None and event.get("channel_type") == "im":
-                team = self._team_for_user(s, event.get("user", ""))
+            if team is None and not is_dm:
+                team = slack_lookup.team_for_new_channel(s, self.org_id, channel, self.app.client)
+            if team is None and is_dm:
+                team = self._team_for_user(s, user)
+                if team is None:
+                    self._explain_once(user)
+                    return
             payload = {
                 "text": event.get("text", ""),
-                "user": event.get("user"),
-                "user_name": self._name(event.get("user", "")),
+                "user": user,
+                "user_name": self._name(user),
                 "channel": channel,
                 "ts": ts,
                 "thread_ts": event.get("thread_ts") or ts,
@@ -60,12 +82,26 @@ class SlackBridge:
             )
 
     def _team_for_user(self, s: sa.orm.Session, slack_user: str) -> models.Team | None:
+        """The first team (oldest) of the Keel person behind this Slack user; links them by email once."""
+        person = slack_lookup.person_for(s, self.org_id, slack_user, self.app.client)
+        if person is None or person.disabled:
+            return None
         return s.scalar(
             sa.select(models.Team)
             .join(models.TeamMember, models.TeamMember.team_id == models.Team.id)
-            .join(models.User, models.User.id == models.TeamMember.user_id)
-            .where(models.User.slack_user_id == slack_user)
+            .where(models.TeamMember.user_id == person.id)
+            .order_by(models.Team.created_at)
         )
+
+    def _explain_once(self, slack_user: str) -> None:
+        """A DM from someone Keel can't place: say why once per process instead of going quiet."""
+        if not slack_user or slack_user in self._explained:
+            return
+        self._explained.add(slack_user)
+        try:
+            self.app.client.chat_postMessage(channel=slack_user, text=NO_TEAM_DM)
+        except Exception:
+            log.debug("couldn't explain to %s", slack_user, exc_info=True)
 
     def _on_mention(self, event: dict, **_: typing.Any) -> None:
         self._record(event, directed=True)
@@ -73,14 +109,26 @@ class SlackBridge:
     def _on_message(self, event: dict, **_: typing.Any) -> None:
         self._record(event, directed=event.get("channel_type") == "im")
 
-    def _on_command(self, ack: typing.Callable, command: dict, **_: typing.Any) -> None:
+    def _on_command(
+        self,
+        ack: typing.Callable,
+        command: dict,
+        respond: typing.Callable | None = None,
+        **_: typing.Any,
+    ) -> None:
         text = (command.get("text") or "").strip()
+        user_id, channel_id = command.get("user_id", ""), command.get("channel_id", "")
+        if text.lower() in ("help", "?"):
+            ack(HELP)
+            return
         with db.session() as s:
-            team = inbox.team_for_channel(s, command.get("channel_id", "")) or self._team_for_user(
-                s, command.get("user_id", "")
+            team = (
+                inbox.team_for_channel(s, channel_id)
+                or slack_lookup.team_for_new_channel(s, self.org_id, channel_id, self.app.client)
+                or self._team_for_user(s, user_id)
             )
             if team is None:
-                ack("This channel has no steward yet. An admin can add it in Keel → Teams.")
+                ack(NO_TEAM_COMMAND)
                 return
             st = s.scalar(sa.select(models.Steward).where(models.Steward.team_id == team.id))
             if text in ("", "status"):
@@ -98,10 +146,20 @@ class SlackBridge:
                 if not rule:
                     ack("Tell me the rule, e.g. `/keel teach Reply in Chinese when asked in Chinese.`")
                     return
-                learning.teach(s, team, rule, self._name(command.get("user_id", "")))
+                learning.teach(s, team, rule, self._name(user_id))
                 ack(f"{st.emoji} Got it. I'll follow that from now on: {rule}")
                 return
-            ack(f"{st.emoji} On it.")
+            if re.match(r"ask\b", text, re.IGNORECASE):
+                question = text[len("ask") :].strip(" :")
+                if not question:
+                    ack("Ask me something, e.g. `/keel ask how do we roll back a deploy?`")
+                    return
+                ack(f"{st.emoji} Looking…")
+                reply = self._answer(s, team, st, question, user_id)
+                if respond is not None:
+                    respond(text=reply, response_type="ephemeral", replace_original=False)
+                return
+            ack(f"{st.emoji} On it. I'll reply in {steward.channel_label(team)} and tag you.")
             inbox.record(
                 s,
                 self.org_id,
@@ -111,12 +169,40 @@ class SlackBridge:
                 "message",
                 {
                     "text": text,
-                    "user": command.get("user_id"),
+                    "user": user_id,
                     "user_name": command.get("user_name"),
-                    "channel": command.get("channel_id"),
+                    "channel": channel_id,
                     "directed": True,
                 },
             )
+
+    def _answer(
+        self, s: sa.orm.Session, team: models.Team, st: models.Steward, question: str, user_id: str
+    ) -> str:
+        """A private answer for ``/keel ask``, limited to what this person may see, with links to the sources."""
+        from keel import knowledge, llm
+
+        person = slack_lookup.person_for(s, self.org_id, user_id, self.app.client)
+        found = knowledge.search(s, [team.id], question, steward.clearance_for(s, person, team))
+        try:
+            reply = learning.answer(
+                s,
+                team,
+                llm.for_org(s, self.org_id),
+                question,
+                found,
+                steward=st.name,
+                asked_by=self._name(user_id),
+            )
+        except Exception as exc:
+            log.warning("/keel ask failed: %s", exc)
+            return f"{st.emoji} I couldn't answer just now ({type(exc).__name__}). Try again in a minute."
+        text = f"{st.emoji} {reply.text}"
+        if reply.gap is None:
+            text += steward.source_footer(found.passages, team)
+        if found.withheld:
+            text += f"\n_{found.withheld} source{'s' if found.withheld != 1 else ''} held back for your access level._"
+        return text
 
     def start(self) -> None:
         """Connect (non-blocking)."""
@@ -152,4 +238,6 @@ def start_for_install() -> SlackBridge | None:
             )
         log.warning("slack socket mode failed: %s", exc)
         return None
+    with db.session() as s:
+        slack_lookup.resolve_all(s)
     return bridge

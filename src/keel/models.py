@@ -95,6 +95,7 @@ class User(Base):
     avatar_url: orm.Mapped[str | None] = orm.mapped_column(sa.String(500), nullable=True)
     disabled: orm.Mapped[bool] = orm.mapped_column(default=False)
     created_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
+    last_seen_at: orm.Mapped[dt.datetime | None] = orm.mapped_column(nullable=True)
 
 
 class Team(Base):
@@ -111,6 +112,7 @@ class Team(Base):
     github_repos: orm.Mapped[list] = orm.mapped_column(default=list)
     timezone: orm.Mapped[str] = orm.mapped_column(sa.String(60), default="UTC")
     brief_hour: orm.Mapped[int] = orm.mapped_column(default=9)
+    sso_groups: orm.Mapped[list] = orm.mapped_column(default=list)
     created_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
 
 
@@ -123,6 +125,41 @@ class TeamMember(Base):
         sa.String(32), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     role: orm.Mapped[str] = orm.mapped_column(sa.String(20), default="member")
+
+
+class Invite(Base):
+    """A one-time link that lets someone join the org (and some teams). Only the token's hash is stored."""
+
+    __tablename__ = "invites"
+    id: IdCol = id_column()
+    org_id: orm.Mapped[str] = org_fk()
+    email: orm.Mapped[str] = orm.mapped_column(sa.String(320))
+    role: orm.Mapped[str] = orm.mapped_column(sa.String(20), default="member")
+    teams: orm.Mapped[list] = orm.mapped_column(default=list)  # [{"slug": ..., "role": "admin"|"member"}]
+    token_hash: orm.Mapped[str] = orm.mapped_column(sa.String(64), unique=True)
+    invited_by: orm.Mapped[str] = orm.mapped_column(sa.String(200))
+    created_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
+    expires_at: orm.Mapped[dt.datetime] = orm.mapped_column()
+    accepted_at: orm.Mapped[dt.datetime | None] = orm.mapped_column(nullable=True)
+    revoked_at: orm.Mapped[dt.datetime | None] = orm.mapped_column(nullable=True)
+
+
+class LoginFailure(Base):
+    """A failed sign-in, kept briefly so lockouts work across replicas."""
+
+    __tablename__ = "login_failures"
+    id: IdCol = id_column()
+    key: orm.Mapped[str] = orm.mapped_column(sa.String(320), index=True)  # "email:<addr>" or "ip:<addr>"
+    at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow, index=True)
+
+
+class SyncCursor(Base):
+    """Where a poller left off (e.g. GitHub issues per repo)."""
+
+    __tablename__ = "sync_cursors"
+    key: orm.Mapped[str] = orm.mapped_column(sa.String(300), primary_key=True)
+    value: orm.Mapped[str] = orm.mapped_column(sa.String(100))
+    updated_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow, onupdate=utcnow)
 
 
 class Steward(Base):
@@ -289,8 +326,34 @@ class KnowledgeDoc(Base):
     source: orm.Mapped[str] = orm.mapped_column(sa.String(500))
     label: orm.Mapped[str] = orm.mapped_column(sa.String(20), default="internal")
     content: orm.Mapped[str] = orm.mapped_column(sa.Text)
+    origin: orm.Mapped[str] = orm.mapped_column(
+        sa.String(20), default="manual"
+    )  # manual|file|url|github|slack
+    source_url: orm.Mapped[str | None] = orm.mapped_column(sa.String(500), nullable=True)
+    review_by: orm.Mapped[dt.date | None] = orm.mapped_column(sa.Date, nullable=True)
+    sync_id: orm.Mapped[str | None] = orm.mapped_column(
+        sa.String(32), sa.ForeignKey("knowledge_sources.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     created_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
     updated_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class KnowledgeSource(Base):
+    """A place Keel keeps a team's knowledge in sync with: a web page or a GitHub folder of Markdown."""
+
+    __tablename__ = "knowledge_sources"
+    id: IdCol = id_column()
+    org_id: orm.Mapped[str] = org_fk()
+    team_id: orm.Mapped[str] = team_fk()
+    kind: orm.Mapped[str] = orm.mapped_column(sa.String(20))  # url | github
+    target: orm.Mapped[str] = orm.mapped_column(sa.String(500))
+    label: orm.Mapped[str] = orm.mapped_column(sa.String(20), default="internal")
+    every_hours: orm.Mapped[int] = orm.mapped_column(default=24)
+    status: orm.Mapped[str] = orm.mapped_column(sa.String(20), default="pending")  # pending | ok | error
+    status_line: orm.Mapped[str] = orm.mapped_column(sa.String(300), default="Waiting for the first sync.")
+    last_synced_at: orm.Mapped[dt.datetime | None] = orm.mapped_column(nullable=True)
+    next_sync_at: orm.Mapped[dt.datetime | None] = orm.mapped_column(nullable=True, index=True)
+    created_at: orm.Mapped[dt.datetime] = orm.mapped_column(default=utcnow)
 
 
 class Lesson(Base):

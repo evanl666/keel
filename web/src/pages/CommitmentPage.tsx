@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { motion } from "motion/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink, MessageSquare, GitBranch, Globe, Bot, Activity as ActivityIcon, Sparkles, CornerDownLeft } from "lucide-react";
+import { ExternalLink, MessageSquare, GitBranch, Globe, Bot, Activity as ActivityIcon, Sparkles, CornerDownLeft } from "lucide-react";
 import { api, errorLine } from "../api/client";
 import { qk, useCommitment } from "../api/hooks";
 import type { CommitmentDetail, CommitmentStatus, Operation, Priority } from "../api/types";
-import { Button, Card, CardHeader, EmptyState, ErrorLine, Input, Select, Skeleton } from "../components/ui";
+import { Button, Card, CardHeader, EmptyState, ErrorLine, Input, PageHeader, Select, Skeleton } from "../components/ui";
 import { DueText, LabelBadge, OpStatusPill, PriorityIcon, RiskTag, STATUS_META, StatusIcon, TeamChip, useTeamMap } from "../components/keel";
 import { useToast } from "../components/toast";
 import { ago, fullDate } from "../lib/time";
@@ -27,16 +27,16 @@ const EVENT_TONE: Record<string, string> = {
   accepted: "var(--ok)",
   unblocked: "var(--ok)",
   status: "var(--accent)",
-  request: "var(--t-violet)",
-  draft: "var(--t-violet)",
-  operation: "var(--t-orange)",
+  request: "var(--accent)",
+  draft: "var(--muted)",
+  operation: "var(--muted)",
 };
 
 function Prop({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3 min-h-[34px] max-sm:py-1">
-      <span className="w-[86px] shrink-0 text-[12.5px] text-faint">{label}</span>
-      <span className="min-w-0 flex-1 flex items-center gap-2 text-[13px]">{children}</span>
+      <span className="w-[86px] shrink-0 text-[12px] text-muted">{label}</span>
+      <span className="min-w-0 flex-1 flex items-center gap-2 text-[14px]">{children}</span>
     </div>
   );
 }
@@ -46,14 +46,14 @@ export function OperationRow({ o, compact }: { o: Operation; compact?: boolean }
     <div className={cn("px-5 py-3 border-t border-line first:border-t-0", compact && "px-4")}>
       <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5">
         <OpStatusPill status={o.status} />
-        <span className="min-w-0 flex-1 truncate text-[13px] max-sm:order-last max-sm:basis-full max-sm:whitespace-normal max-sm:line-clamp-2">{o.summary}</span>
-        <span className="ml-auto text-[12px] text-faint tabular whitespace-nowrap">{ago(o.updated_at)}</span>
+        <span className="min-w-0 flex-1 truncate text-[14px] max-sm:order-last max-sm:basis-full max-sm:whitespace-normal max-sm:line-clamp-2">{o.summary}</span>
+        <span className="ml-auto text-[12px] text-muted tabular whitespace-nowrap">{ago(o.updated_at)}</span>
       </div>
-      <div className="mt-1.5 flex items-center gap-2 text-[12px] text-faint flex-wrap">
-        <code className="max-w-full truncate font-mono text-[11.5px] text-muted bg-hover border border-line rounded px-1.5 py-px" title={o.op_id}>{o.op_id}</code>
+      <div className="mt-1.5 flex items-center gap-2 text-[12px] text-muted flex-wrap">
+        <code className="max-w-full truncate font-mono text-[12px] text-soft bg-hover rounded px-1.5 py-px" title={o.op_id}>{o.op_id}</code>
         <span>{o.kind}</span>
         <span>→</span>
-        <span className="max-w-full truncate font-mono text-[11.5px]">{o.target}</span>
+        <span className="max-w-full truncate font-mono text-[12px]">{o.target}</span>
         {o.attempts > 1 && <span>· {o.attempts} attempts</span>}
         {o.remote_ref && (
           <a href={o.remote_ref.startsWith("http") ? o.remote_ref : undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
@@ -63,7 +63,7 @@ export function OperationRow({ o, compact }: { o: Operation; compact?: boolean }
         )}
       </div>
       {o.error_line && (
-        <div className={cn("mt-2 text-[12.5px] leading-snug flex items-start gap-2", o.status === "failed" ? "text-bad" : "text-[#fb923c]")}>
+        <div className={cn("mt-2 text-[12px] leading-snug flex items-start gap-2", o.status === "failed" ? "text-bad" : "text-warn")}>
           <span className="mt-[6px] size-1.5 rounded-full bg-current shrink-0" />
           {o.error_line}
         </div>
@@ -93,6 +93,7 @@ export function CommitmentPage() {
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+        <PageHeader title={key} sub="Loading…" back={{ to: "/ledger", label: "Ledger" }} />
         <div className="lg:col-span-8 space-y-4">
           <Skeleton className="h-8 w-2/3" />
           <Skeleton className="h-24" />
@@ -104,12 +105,14 @@ export function CommitmentPage() {
   }
   if (!c) {
     return (
-      <EmptyState
-        icon="🔎"
-        title={`Can't open ${key}`}
-        line={error ? errorLine(error) : undefined}
-        action={<Button onClick={() => nav("/ledger")}>Back to ledger</Button>}
-      />
+      <>
+        <PageHeader title={key} back={{ to: "/ledger", label: "Ledger" }} />
+        <EmptyState
+          title={`Can't open ${key}`}
+          line={error ? errorLine(error) : undefined}
+          action={<Button onClick={() => nav("/ledger")}>Back to ledger</Button>}
+        />
+      </>
     );
   }
   const src = SOURCE[c.source_kind];
@@ -117,41 +120,43 @@ export function CommitmentPage() {
 
   return (
     <div>
-      <Link to="/ledger" className="inline-flex items-center gap-1.5 text-[12.5px] text-faint hover:text-fg mb-4 transition-colors">
-        <ArrowLeft className="size-3.5" /> Ledger
-      </Link>
+      <PageHeader
+        title={c.title}
+        sub={`${c.key} · ${teams[c.owner_team]?.name ?? c.owner_team}${c.requester_team && c.requester_team !== c.owner_team ? ` for ${teams[c.requester_team]?.name ?? c.requester_team}` : ""}`}
+        back={{ to: "/ledger", label: "Ledger" }}
+      />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
         <div className="lg:col-span-8 min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-faint">
+          <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
             <span className="font-mono">{c.key}</span>
             <span>·</span>
             <StatusIcon status={c.status} size={13} />
             <span>{STATUS_META[c.status].label}</span>
             <RiskTag risk={c.risk} />
           </div>
-          <h1 className="mt-2 text-[21px] sm:text-[24px] font-semibold tracking-[-0.025em] leading-tight break-words">{c.title}</h1>
-          {c.detail && <p className="mt-3 text-[14px] leading-relaxed text-fg/80 max-w-[680px]">{c.detail}</p>}
+          <h2 className="mt-2 text-[20px] font-semibold tracking-[-0.015em] leading-tight break-words">{c.title}</h2>
+          {c.detail && <p className="mt-2 text-[14px] leading-relaxed text-soft max-w-[680px]">{c.detail}</p>}
 
-          <Card className="mt-5 sm:mt-6">
+          <Card className="mt-6">
             <CardHeader title="Timeline" sub={`${c.events.length} events`} />
             <ol className="relative px-4 sm:px-5 pb-4">
               <span className="absolute left-[23px] sm:left-[27px] top-2 bottom-6 w-px bg-line" />
               {c.events.map((e, i) => (
                 <motion.li
                   key={e.id}
-                  initial={{ opacity: 0, x: -4 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.03 }}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.02, duration: 0.15 }}
                   className="relative flex gap-3.5 py-2"
                 >
                   <span className="relative z-10 mt-[5px] grid size-[15px] shrink-0 place-items-center rounded-full bg-panel">
                     <span className="size-[7px] rounded-full" style={{ background: EVENT_TONE[e.kind] ?? "var(--faint)" }} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] leading-snug">
-                      <span className="font-medium">{e.actor}</span> <span className="text-fg/80">{e.text}</span>
+                    <div className="text-[14px] leading-snug">
+                      <span className="font-medium">{e.actor}</span> <span className="text-soft">{e.text}</span>
                     </div>
-                    <div className="text-[11.5px] text-faint mt-0.5" title={new Date(e.at).toLocaleString()}>
+                    <div className="text-[12px] text-muted mt-0.5" title={new Date(e.at).toLocaleString()}>
                       {e.kind} · {ago(e.at)}
                     </div>
                   </div>
@@ -182,14 +187,14 @@ export function CommitmentPage() {
                 ))}
               </div>
             ) : (
-              <div className="px-5 pb-5 text-[13px] text-faint">Nothing sent yet.</div>
+              <div className="px-5 pb-5 text-[14px] text-muted">Nothing sent yet.</div>
             )}
           </Card>
         </div>
 
         <aside className="lg:col-span-4">
-          <Card className="p-4 sm:p-5 lg:sticky lg:top-6">
-            <div className="text-[11.5px] font-medium uppercase tracking-[0.07em] text-faint mb-2">Properties</div>
+          <Card className="p-4 sm:p-5 lg:sticky lg:top-24">
+            <div className="text-[12px] font-medium text-muted mb-2">Properties</div>
             <Prop label="Status">
               <Select
                 value={c.status}
@@ -213,7 +218,7 @@ export function CommitmentPage() {
                 ))}
               </Select>
             </Prop>
-            <Prop label="Due">{closed ? <span className="text-faint">—</span> : <><DueText iso={c.due_at} />{c.due_at && <span className="text-faint text-[12px]">{fullDate(c.due_at)}</span>}</>}</Prop>
+            <Prop label="Due">{closed ? <span className="text-muted">—</span> : <><DueText iso={c.due_at} />{c.due_at && <span className="text-muted text-[12px]">{fullDate(c.due_at)}</span>}</>}</Prop>
             <div className="my-2 border-t border-line" />
             <Prop label="Owner">
               <TeamChip slug={c.owner_team} team={teams[c.owner_team]} link />
@@ -226,7 +231,7 @@ export function CommitmentPage() {
                   <span className="truncate text-muted">{c.requester_person}</span>
                 </>
               ) : (
-                <span className="text-faint">Own team</span>
+                <span className="text-muted">Own team</span>
               )}
             </Prop>
             <div className="my-2 border-t border-line" />
@@ -239,7 +244,7 @@ export function CommitmentPage() {
                 {src.label}
               </span>
               {c.source_url && (
-                <a href={c.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent text-[12.5px] hover:underline">
+                <a href={c.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent text-[12px] hover:underline">
                   Open <ExternalLink className="size-3" />
                 </a>
               )}

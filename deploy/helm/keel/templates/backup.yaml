@@ -1,0 +1,67 @@
+{{- if .Values.backup.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "keel.fullname" . }}-backups
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.backup.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.storage }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "keel.fullname" . }}-backup
+  labels: {{- include "keel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels: {{- include "keel.selector" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          enableServiceLinks: false
+          securityContext: {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: backup
+              image: {{ include "keel.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/bin/sh", "-c"]
+              # Dump, then keep only the newest N files.
+              args:
+                - >-
+                  keel backup &&
+                  ls -1t /backups/keel-*.dump | tail -n +{{ add .Values.backup.keep 1 }} | xargs -r rm -f &&
+                  ls -lh /backups
+              envFrom:
+                - configMapRef:
+                    name: {{ include "keel.fullname" . }}-config
+                - secretRef:
+                    name: {{ include "keel.secretName" . }}
+              env:
+                - {name: KEEL_BACKUP_DIR, value: /backups}
+              securityContext: {{- toYaml .Values.securityContext | nindent 16 }}
+              volumeMounts:
+                - {name: backups, mountPath: /backups}
+                - {name: tmp, mountPath: /tmp}
+                - {name: home, mountPath: /home/keel}
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ include "keel.fullname" . }}-backups
+            - {name: tmp, emptyDir: {}}
+            - {name: home, emptyDir: {}}
+{{- end }}

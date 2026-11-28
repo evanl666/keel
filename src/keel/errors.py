@@ -126,3 +126,11 @@ def classify_transport(service: str, exc: BaseException, sent: bool) -> Connecto
         UNKNOWN_OUTCOME,
         f"Lost the connection to {service} after sending ({type(exc).__name__}), so it may have gone through. Keel will check before retrying.",
     )
+
+
+class Conflict(Exception):
+    """A request that can't be done in the current state (the API answers 409 with this line)."""
+
+
+class Missing(Exception):
+    """Something the request names doesn't exist (the API answers 404 with this line)."""
